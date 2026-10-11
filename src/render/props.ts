@@ -10,32 +10,52 @@ const SNOW = 0xf0f4f7;
 
 export function pine(g: GeoBuilder, x: number, z: number, s: number, snow: boolean, dark = false): PropCollider {
   const trunk = 0x4a3426;
-  const leaf = dark ? 0x23402a : 0x2f5530;
-  g.cyl(0.18 * s, 0.24 * s, 1.4 * s, x, 0.7 * s, z, trunk, { seg: 6 });
-  for (let i = 0; i < 3; i++) {
-    const y = (1.4 + i * 1.15) * s;
-    const r = (1.6 - i * 0.42) * s;
-    g.cone(r, 1.9 * s, x, y + 0.6 * s, z, leaf, { seg: 7, vary: 0.08, ry: i });
-    if (snow) g.cone(r * 0.75, 0.7 * s, x, y + 1.25 * s, z, SNOW, { seg: 7, ry: i });
+  const leaf = dark ? 0x22402c : 0x2c5432;
+  const leafHi = dark ? 0x2f5636 : 0x3b6a3c;
+  g.cyl(0.16 * s, 0.24 * s, 1.5 * s, x, 0.75 * s, z, trunk, { seg: 6 });
+  g.layer('foliage');
+  const tiers = 4;
+  for (let i = 0; i < tiers; i++) {
+    const y = (1.25 + i * 0.95) * s;
+    const r = (1.7 - i * 0.36) * s;
+    g.cone(r, 1.7 * s, x, y + 0.55 * s, z, i % 2 ? leafHi : leaf, { seg: 7, vary: 0.06, ry: i * 0.9 });
+    if (snow) g.cone(r * 0.72, 0.62 * s, x, y + 1.08 * s, z, SNOW, { seg: 7, ry: i * 0.9 });
   }
+  g.layer('base');
   return { kind: 'circle', x, z, r: 0.35 * s };
 }
 
 export function oak(g: GeoBuilder, x: number, z: number, s: number, snow: boolean, autumn = false): PropCollider {
-  g.cyl(0.25 * s, 0.35 * s, 2.2 * s, x, 1.1 * s, z, 0x5a4030, { seg: 6 });
-  const leaf = autumn ? 0x9a7a2a : 0x4f6e2e;
-  g.dodeca(1.5 * s, x, 3.0 * s, z, leaf, { vary: 0.1 });
-  g.dodeca(1.0 * s, x + 0.9 * s, 2.6 * s, z + 0.3 * s, leaf, { vary: 0.1 });
-  g.dodeca(1.1 * s, x - 0.8 * s, 2.7 * s, z - 0.4 * s, leaf, { vary: 0.1 });
-  if (snow) g.dodeca(1.2 * s, x, 3.6 * s, z, SNOW, { sy: 0.4 });
+  g.cyl(0.24 * s, 0.36 * s, 2.3 * s, x, 1.15 * s, z, 0x5a4030, { seg: 6 });
+  g.cyl(0.1 * s, 0.14 * s, 1.2 * s, x + 0.45 * s, 2.3 * s, z, 0x5a4030, { seg: 5, rz: -0.7 });
+  const dark = autumn ? 0x8a5a24 : 0x3e5e2a;
+  const mid = autumn ? 0xb07a2a : 0x4f7432;
+  const light = autumn ? 0xd09a3a : 0x6a8e3c;
+  g.layer('foliage');
+  // couronne : volumes sombres dessous, clairs au sommet
+  g.dodeca(1.25 * s, x - 0.7 * s, 2.55 * s, z + 0.35 * s, dark, { vary: 0.06 });
+  g.dodeca(1.2 * s, x + 0.85 * s, 2.6 * s, z - 0.2 * s, dark, { vary: 0.06 });
+  g.dodeca(1.45 * s, x, 3.1 * s, z, mid, { vary: 0.06 });
+  g.dodeca(1.0 * s, x + 0.4 * s, 3.75 * s, z + 0.3 * s, light, { vary: 0.06 });
+  g.dodeca(0.85 * s, x - 0.55 * s, 3.6 * s, z - 0.35 * s, light, { vary: 0.06 });
+  if (snow) {
+    g.dodeca(1.05 * s, x + 0.2 * s, 4.15 * s, z, SNOW, { sy: 0.35 });
+    g.dodeca(0.8 * s, x - 0.7 * s, 3.55 * s, z + 0.3 * s, SNOW, { sy: 0.3 });
+  }
+  g.layer('base');
   return { kind: 'circle', x, z, r: 0.45 * s };
 }
 
 export function birch(g: GeoBuilder, x: number, z: number, s: number, snow: boolean): PropCollider {
-  g.cyl(0.12 * s, 0.16 * s, 3.4 * s, x, 1.7 * s, z, 0xe0ddd0, { seg: 6 });
-  g.box(0.2 * s, 0.08 * s, 0.2 * s, x, 1.2 * s, z, 0x2a2a2a);
-  g.box(0.2 * s, 0.08 * s, 0.2 * s, x, 2.2 * s, z, 0x2a2a2a);
-  g.dodeca(1.0 * s, x, 3.6 * s, z, snow ? 0xc8d0b0 : 0x8aa04a, { vary: 0.1, sy: 1.3 });
+  g.cyl(0.11 * s, 0.15 * s, 3.4 * s, x, 1.7 * s, z, 0xe6e2d4, { seg: 6 });
+  for (const y of [0.7, 1.3, 2.0, 2.7]) g.box(0.24 * s, 0.07 * s, 0.24 * s, x, y * s, z, 0x2a2622, { ry: y });
+  g.layer('foliage');
+  const c1 = snow ? 0xc8d0b0 : 0x8aa448;
+  const c2 = snow ? 0xd8dec8 : 0xa8bc5a;
+  g.dodeca(0.85 * s, x, 3.3 * s, z, c1, { vary: 0.08, sy: 1.25 });
+  g.dodeca(0.65 * s, x + 0.45 * s, 3.85 * s, z - 0.1 * s, c2, { vary: 0.08, sy: 1.2 });
+  g.dodeca(0.55 * s, x - 0.4 * s, 4.05 * s, z + 0.15 * s, c2, { vary: 0.08, sy: 1.2 });
+  g.layer('base');
   return { kind: 'circle', x, z, r: 0.25 * s };
 }
 
@@ -65,8 +85,11 @@ export function mangrove(g: GeoBuilder, x: number, z: number, s: number, rng: Rn
     g.cyl(0.06 * s, 0.1 * s, 1.6 * s, x + Math.cos(a) * 0.5 * s, 0.6 * s, z + Math.sin(a) * 0.5 * s, 0x3a3020, { seg: 4, rz: Math.cos(a) * 0.5, rx: -Math.sin(a) * 0.5 });
   }
   g.cyl(0.2 * s, 0.25 * s, 2.2 * s, x, 2.2 * s, z, 0x3a3020, { seg: 5 });
-  g.dodeca(1.4 * s, x, 3.6 * s, z, 0x3d5a2a, { vary: 0.12, sy: 0.6 });
-  g.dodeca(0.9 * s, x + 0.8 * s, 3.2 * s, z, 0x4a6a32, { vary: 0.12, sy: 0.6 });
+  g.layer('foliage');
+  g.dodeca(1.4 * s, x, 3.6 * s, z, 0x3d5a2a, { vary: 0.08, sy: 0.6 });
+  g.dodeca(0.9 * s, x + 0.8 * s, 3.2 * s, z, 0x4a6a32, { vary: 0.08, sy: 0.6 });
+  g.dodeca(0.8 * s, x - 0.7 * s, 3.9 * s, z + 0.3 * s, 0x5a7a3a, { vary: 0.08, sy: 0.6 });
+  g.layer('base');
   return { kind: 'circle', x, z, r: 0.5 * s };
 }
 
@@ -99,10 +122,29 @@ export function rock(g: GeoBuilder, x: number, z: number, s: number, color: numb
   return s > 0.6 ? { kind: 'circle', x, z, r: s * 0.85 } : null;
 }
 
-export function bush(g: GeoBuilder, x: number, z: number, s: number, color: number): PropCollider {
-  g.dodeca(0.7 * s, x, 0.45 * s, z, color, { vary: 0.15, sy: 0.7 });
-  g.dodeca(0.5 * s, x + 0.5 * s, 0.35 * s, z + 0.2 * s, color, { vary: 0.15, sy: 0.7 });
+export function bush(g: GeoBuilder, x: number, z: number, s: number, color: number, berries = 0): PropCollider {
+  g.layer('foliage');
+  g.dodeca(0.7 * s, x, 0.45 * s, z, color, { vary: 0.08, sy: 0.75 });
+  g.dodeca(0.5 * s, x + 0.55 * s, 0.35 * s, z + 0.2 * s, color, { vary: 0.08, sy: 0.75 });
+  g.dodeca(0.45 * s, x - 0.45 * s, 0.6 * s, z - 0.1 * s, color, { vary: 0.12, sy: 0.8 });
+  if (berries) for (let i = 0; i < 4; i++) g.box(0.1, 0.1, 0.1, x + Math.cos(i * 1.7) * 0.5 * s, 0.75 * s, z + Math.sin(i * 1.7) * 0.4 * s, berries);
+  g.layer('base');
   return null;
+}
+
+/** Souche ou tronc couché, parfois moussu. */
+export function stump(g: GeoBuilder, x: number, z: number, rng: Rng, snow = false): void {
+  const wood = rng.pick([0x5a4030, 0x4e3828, 0x6a4a34]);
+  if (rng.chance(0.5)) {
+    g.cyl(0.32, 0.38, 0.45, x, 0.22, z, wood, { seg: 7 });
+    g.cyl(0.26, 0.26, 0.02, x, 0.46, z, 0xa8865a, { seg: 7 });
+    if (snow) g.cyl(0.3, 0.3, 0.06, x, 0.5, z, SNOW, { seg: 7 });
+  } else {
+    const a = rng.next() * Math.PI;
+    g.cyl(0.22, 0.26, 2.2, x, 0.22, z, wood, { seg: 6, rz: Math.PI / 2, ry: a });
+    if (!snow) g.layer('foliage').dodeca(0.28, x, 0.42, z, 0x4e7432, { sy: 0.5 }).layer('base');
+    else g.box(1.8, 0.08, 0.3, x, 0.47, z, SNOW, { ry: a });
+  }
 }
 
 export function grass(g: GeoBuilder, x: number, z: number, s: number, color: number): void {
@@ -211,9 +253,16 @@ const _pd = new THREE.Color();
 
 /** Flaque : bord boueux sombre et, si toxique, cœur luminescent atténué. */
 export function puddle(g: GeoBuilder, x: number, z: number, r: number, color: number, glow: boolean): void {
+  if (!glow) {
+    // mare : berge de terre sombre puis eau animée
+    g.cyl(r + 0.35, r + 0.45, 0.04, x, 0.02, z, _pc.setHex(color).lerp(_pd.setHex(0x3a3024), 0.7).getHex(), { seg: 12 });
+    g.layer('water');
+    g.cyl(r, r, 0.05, x, 0.04, z, color, { seg: 12 });
+    g.layer('base');
+    return;
+  }
   const dark = _pc.setHex(color).multiplyScalar(0.22).lerp(_pd.setHex(0x2a2a1c), 0.55).getHex();
   g.cyl(r, r, 0.04, x, 0.025, z, dark, { seg: 10 });
-  if (!glow) return;
   g.layer('glow');
   const mid = _pc.setHex(color).multiplyScalar(0.5).getHex();
   g.cyl(r * 0.68, r * 0.68, 0.04, x, 0.04, z, mid, { seg: 10 });

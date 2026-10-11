@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GeoBuilder, Materials } from './geo';
 import type { NpcLook } from '../data/npcs';
+import { toonClone } from './toon';
 
 export type Pose = 'stand' | 'walk' | 'run' | 'aim' | 'sit' | 'lie' | 'dead' | 'work' | 'cower';
 
@@ -184,7 +185,7 @@ export class Humanoid {
    */
   enableXray(color = 0x7fd4ff): void {
     if (this.outline) return;
-    const bodyMat = Materials.vc.clone();
+    const bodyMat = toonClone(Materials.vc);
     bodyMat.stencilWrite = true;
     bodyMat.stencilRef = 1;
     bodyMat.stencilFunc = THREE.AlwaysStencilFunc;

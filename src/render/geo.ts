@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toonify } from './toon';
 
 /**
  * GeoBuilder : construit une géométrie low-poly fusionnée avec couleurs de sommets.
@@ -253,8 +254,8 @@ export class GeoBuilder {
     for (const [name, geo] of this.build()) {
       const mat = opts.materials?.[name] ?? Materials.forLayer(name);
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = opts.castShadow ?? name === 'base';
-      mesh.receiveShadow = opts.receiveShadow ?? name === 'base';
+      mesh.castShadow = opts.castShadow ?? (name === 'base' || name === 'foliage');
+      mesh.receiveShadow = opts.receiveShadow ?? (name === 'base' || name === 'foliage' || name === 'ground' || name === 'water');
       mesh.name = name;
       group.add(mesh);
     }
@@ -271,15 +272,21 @@ export class GeoBuilder {
   }
 }
 
-/** Matériaux partagés. */
+/** Matériaux partagés (ombrage toon, voir toon.ts). */
 export const Materials = {
-  vc: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+  vc: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })),
   /** Version transparente pour les murs en coupe (bâtiments/wagons). */
-  vcFaded: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.18, depthWrite: false }),
+  vcFaded: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.18, depthWrite: false })),
+  /** Feuillages : se balancent au vent selon leur hauteur. */
+  foliage: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { sway: 'world', swayAmp: 0.08 }),
+  /** Sol : grain procédural fixé au terrain. */
+  ground: toonify(new THREE.MeshLambertMaterial({ vertexColors: true }), { ground: true }),
+  /** Eau : rides animées et scintillements. */
+  water: toonify(new THREE.MeshLambertMaterial({ vertexColors: true }), { water: true, snow: false }),
   /** Éléments lumineux (fenêtres éclairées, lampes, néons) : non affectés par l'éclairage. */
   glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
   /** Verre / eau semi-transparents. */
-  glass: new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.45, depthWrite: false }),
+  glass: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.45, depthWrite: false }), { snow: false }),
   /** Effets additifs (lueurs radioactives…). */
   additive: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }),
   forLayer(name: string): THREE.Material {
@@ -290,8 +297,39 @@ export const Materials = {
         return Materials.glass;
       case 'additive':
         return Materials.additive;
+      case 'foliage':
+        return Materials.foliage;
+      case 'ground':
+        return Materials.ground;
+      case 'water':
+        return Materials.water;
       default:
         return Materials.vc;
     }
   },
 };
+
+for (const m of [Materials.vc, Materials.vcFaded, Materials.foliage, Materials.ground, Materials.water, Materials.glow, Materials.glass, Materials.additive]) m.userData.shared = true;
+
+const waterMats = new Map<number, THREE.MeshLambertMaterial>();
+/** Matériau d'eau d'une couleur donnée (partagé). */
+export function waterMaterial(color: number): THREE.MeshLambertMaterial {
+  let m = waterMats.get(color);
+  if (!m) {
+    m = toonify(new THREE.MeshLambertMaterial({ color }), { water: true, snow: false });
+    m.userData.shared = true;
+    waterMats.set(color, m);
+  }
+  return m;
+}
+
+/** Libère géométries et matériaux d'un objet, sauf ceux partagés (userData.shared). */
+export function disposeObject(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (!mesh.geometry.userData.shared) mesh.geometry.dispose();
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) if (m && !m.userData.shared) m.dispose();
+  });
+}

@@ -4,11 +4,10 @@ import { ARCHETYPES, type ArchetypeDef } from '../data/stations';
 import { BIOMES, type BiomeDef } from '../data/biomes';
 import { STATION_POOLS, type EnemyId } from '../data/enemies';
 import { KEYCARD_COLORS, type KeycardColor } from '../data/items';
-import { Noise2D } from '../core/noise';
 import * as P from '../render/props';
 import type { MapNode } from '../state/types';
 import type { Rect } from '../core/math';
-import type { GeoBuilder } from '../render/geo';
+import { waterMaterial, type GeoBuilder } from '../render/geo';
 import type { PropCollider } from '../render/props';
 
 /** Contexte de génération d'une gare. */
@@ -118,16 +117,51 @@ export function biomeDressing(b: StationBuilder, ctx: GenCtx, density = 1): void
     }
   };
   const rockC = bio.id === 'desert' ? 0xa07a50 : bio.id === 'irradie' ? 0x5a5a48 : 0x6e6a62;
+  const bushC = bio.id === 'desert' ? 0x8a8a4a : bio.id === 'irradie' ? 0x7a7a3a : bio.id === 'marais' ? 0x3e5a30 : w ? 0x6a7a62 : bio.id === 'foret' ? 0x3a6030 : 0x4e7434;
   for (const reg of [SOUTH, NORTH]) {
     const area = ((reg.x1 - reg.x0) * (reg.z1 - reg.z0)) / 1000;
-    b.scatter(reg, Math.round(area * bio.treeDensity * 2.2 * density), treeFn, 2.2);
-    b.scatter(reg, Math.round(area * bio.rockDensity * 1.4 * density), (g, x, z) => P.rock(g, x, z, 0.5 + rng.next() * 1.3, rockC, rng, w), 2);
-    b.scatter(reg, Math.round(area * 1.5 * density), (g, x, z) => {
-      if (!w && bio.id !== 'desert' && bio.id !== 'toundra') P.grass(g, x, z, 1, bio.id === 'irradie' ? 0x8a8a3a : bio.id === 'marais' ? 0x4a6a32 : 0x6a8a3a);
-      else if (bio.id === 'desert') P.bones(g, x, z, rng);
+    // bosquets : quelques arbres serrés autour d'un centre, ourlés de buissons
+    const groves = Math.round(area * bio.treeDensity * 0.55 * density);
+    for (let k = 0; k < groves; k++) {
+      const c = b.findSpot(6, 6, reg, 20, 1);
+      if (!c) continue;
+      const n = 3 + rng.int(0, 5);
+      for (let t = 0; t < n; t++) {
+        const x = c.x + rng.gauss() * 3.2;
+        const z = c.z + rng.gauss() * 3.2;
+        const r = { x0: x - 1.1, z0: z - 1.1, x1: x + 1.1, z1: z + 1.1 };
+        if (!b.isFree(r, 0.2)) continue;
+        b.addCollider(treeFn(b.g, x, z));
+        b.reserve(r);
+      }
+      for (let t = 0; t < 3; t++) {
+        const a = rng.next() * Math.PI * 2;
+        const x = c.x + Math.cos(a) * rng.range(3.5, 6);
+        const z = c.z + Math.sin(a) * rng.range(3.5, 6);
+        if (b.isFree({ x0: x - 0.8, z0: z - 0.8, x1: x + 0.8, z1: z + 0.8 }, 0.1)) P.bush(b.g, x, z, 0.7 + rng.next() * 0.6, bushC, !w && rng.chance(0.15) ? 0xc0303a : 0);
+      }
+    }
+    b.scatter(reg, Math.round(area * bio.treeDensity * 1.4 * density), treeFn, 2.2);
+    b.scatter(reg, Math.round(area * bio.rockDensity * 2.2 * density), (g, x, z) => P.rock(g, x, z, 0.4 + rng.next() * 1.2, rockC, rng, w), 2);
+    if (bio.id !== 'toundra') b.scatter(reg, Math.round(area * 2.2 * density), (g, x, z) => P.bush(g, x, z, 0.6 + rng.next() * 0.6, bushC, !w && rng.chance(0.12) ? 0xc0303a : 0), 1.6);
+    b.scatter(reg, Math.round(area * 0.6 * density), (g, x, z) => {
+      if (bio.id === 'desert') P.bones(g, x, z, rng);
+      else P.stump(g, x, z, rng, w);
       return null;
     }, 1);
     if (bio.ruinDensity > 0.2) b.scatter(reg, Math.round(area * bio.ruinDensity * 0.8 * density), (g, x, z) => rng.chance(0.5) ? P.car(g, x, z, rng.next() * 6, rng.pick([0x7a3a2a, 0x3a5a7a, 0x6a6a3a]), true) : P.ruinWall(g, x, z, 3 + rng.next() * 3, 2 + rng.next() * 2, rng.next() * 3, 0x7a746a, rng), 4.5);
+  }
+  // abords hors limites : la gare s'inscrit dans un paysage (décor seul, sans collisions)
+  const bd = b.bounds;
+  const ring = 22;
+  const outskirts = Math.round(((bd.x1 - bd.x0 + ring * 2) * ring * 2 + (bd.z1 - bd.z0) * ring * 2) / 1000 * (bio.treeDensity * 9 + bio.rockDensity * 2) * density);
+  for (let k = 0; k < outskirts; k++) {
+    const side = rng.int(0, 3);
+    const x = side === 0 ? rng.range(bd.x0 - ring, bd.x0 - 2) : side === 1 ? rng.range(bd.x1 + 2, bd.x1 + ring) : rng.range(bd.x0 - ring, bd.x1 + ring);
+    const z = side === 2 ? rng.range(bd.z0 - ring, bd.z0 - 2) : side === 3 ? rng.range(bd.z1 + 2, bd.z1 + ring) : rng.range(bd.z0, bd.z1);
+    if (Math.abs(z) < 6) continue;
+    if (rng.chance(bio.treeDensity / (bio.treeDensity + bio.rockDensity * 0.4 + 0.01))) treeFn(b.g, x, z);
+    else P.rock(b.g, x, z, 0.6 + rng.next() * 1.8, rockC, rng, w);
   }
   // flaques radioactives et poches de gaz du biome
   if (bio.radiation > 0 || ctx.node.radiation > 0) {
@@ -197,7 +231,7 @@ const depot: Gen = (b, ctx) => {
   g.box(5, 8, 5, -24, 4, 14, 0x3a3a3a);
   g.box(6, 1, 6, -24, 8.5, 14, 0x2a2a2a);
   g.box(1.2, 0.5, 4, -24, 6, 10.5, 0x4a4a4a, { rx: 0.5 });
-  for (let i = 0; i < 6; i++) g.dodeca(0.8, -24 + (i % 3 - 1) * 1.2, 0.5, 18 + Math.floor(i / 3), 0x151515);
+  for (let i = 0; i < 6; i++) g.dodeca(0.8, -24 + (i % 3 - 1) * 1.2, 0.5, 18 + Math.floor(i / 3), i % 2 ? 0x2c2c34 : 0x22222a, { ry: i });
   b.colliders.addRect(-26.5, 11.5, -21.5, 16.5);
   b.reserve({ x0: -28, z0: 10, x1: -20, z1: 20 });
   b.special(-24, 10.2, 'tour_charbon', 'Tour à charbon', 2.2);
@@ -422,8 +456,14 @@ const ville: Gen = (b, ctx) => {
   stationHouse(b, ctx);
   const g = b.g;
   // rues
-  for (const z of [26, 50]) g.box(190, 0.03, 7, -25, 0.02, z, 0x3a3a3c);
-  for (const x of [-80, -30, 20]) g.box(7, 0.03, 66, x, 0.02, 45, 0x3a3a3c);
+  for (const z of [26, 50]) {
+    g.box(190, 0.03, 7, -25, 0.02, z, 0x3a3a3c);
+    b.pave({ x0: -120, z0: z - 3.5, x1: 70, z1: z + 3.5 });
+  }
+  for (const x of [-80, -30, 20]) {
+    g.box(7, 0.03, 66, x, 0.02, 45, 0x3a3a3c);
+    b.pave({ x0: x - 3.5, z0: 12, x1: x + 3.5, z1: 78 });
+  }
   const blocks: Rect[] = [region(-112, 30, -84, 46), region(-76, 30, -34, 46), region(-26, 30, 16, 46), region(24, 30, 66, 46), region(-112, 54, -84, 76), region(-76, 54, -34, 76), region(-26, 54, 16, 76), region(24, 54, 66, 76), region(-76, 9, -34, 22), region(24, 9, 66, 22)];
   const handles: BuildingHandle[] = [];
   for (const bl of blocks) {
@@ -703,8 +743,7 @@ const port: Gen = (b, ctx) => {
 
 function waterPlane(x0: number, z0: number, x1: number, z1: number): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2);
-  const mat = new THREE.MeshLambertMaterial({ color: 0x3a5a62, transparent: true, opacity: 0.85 });
-  const m = new THREE.Mesh(geo, mat);
+  const m = new THREE.Mesh(geo, waterMaterial(0x3a6a78));
   m.position.set((x0 + x1) / 2, 0.15, (z0 + z1) / 2);
   m.receiveShadow = true;
   return m;
@@ -866,9 +905,8 @@ export function generateStation(b: StationBuilder, node: MapNode, budgetMult: nu
   const arch = ARCHETYPES[node.archetype];
   const biome = BIOMES[node.biome];
   const ctx: GenCtx = { node, arch, biome, hostile: node.hostility === 'hostile', named: {}, spots: {}, budget: (6 + node.threat * 5.5) * budgetMult };
-  const noise = new Noise2D(node.seed);
   const colors = b.winter && node.biome !== 'desert' ? biome.groundWinter : biome.ground;
-  b.ground(colors, (x, z) => noise.fbm(x * 0.03, z * 0.03, 3));
+  b.ground(colors, node.seed);
   b.track(-260, 160, 0);
   b.buildPlatform();
   GENERATORS[node.archetype](b, ctx);

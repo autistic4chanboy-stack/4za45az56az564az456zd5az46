@@ -4,7 +4,7 @@ import { generateStation, type GenCtx } from '../world/archetypes';
 import { NavGrid, type CollisionWorld, type Collider } from '../world/collision';
 import { BIOMES } from '../data/biomes';
 import { DIFFICULTIES } from '../data/balance';
-import { Materials } from '../render/geo';
+import { Materials, disposeObject } from '../render/geo';
 import { rectContains, type Rect } from '../core/math';
 import { Rng } from '../core/rng';
 import { Enemy } from './enemy';
@@ -450,13 +450,7 @@ export class StationLevel implements Level {
 
   dispose(): void {
     this.game.scene.remove(this.root);
-    this.root.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.geometry.dispose();
-        const m = o.material as THREE.Material;
-        if (m !== Materials.vc && m !== Materials.vcFaded && m !== Materials.glow && m !== Materials.glass && m !== Materials.additive) m.dispose();
-      }
-    });
+    disposeObject(this.root);
     for (const e of this.enemies) e.dispose();
     for (const r of this.residents) r.dispose();
     this.enemies = [];

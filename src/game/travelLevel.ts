@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { GeoBuilder, Materials } from '../render/geo';
+import { GeoBuilder, Materials, disposeObject, waterMaterial } from '../render/geo';
 import { CollisionWorld } from '../world/collision';
 import { Noise2D } from '../core/noise';
 import { Rng } from '../core/rng';
 import * as P from '../render/props';
+import { buildTerrain, buildGrass, buildFlowers, groundCoverFor, vegetationDensity } from '../render/terrain';
 import { BIOMES, type BiomeId } from '../data/biomes';
 import { ENEMIES, TRAVEL_POOLS, type EnemyId } from '../data/enemies';
 import { BAL, DIFFICULTIES } from '../data/balance';
@@ -127,9 +128,7 @@ export class TravelLevel implements Level {
     for (const [idx, c] of this.chunks) {
       if (idx < first || idx > last) {
         this.root.remove(c.group);
-        c.group.traverse((o) => {
-          if (o instanceof THREE.Mesh) o.geometry.dispose();
-        });
+        disposeObject(c.group);
         this.chunks.delete(idx);
       }
     }
@@ -156,14 +155,18 @@ export class TravelLevel implements Level {
     const loot: Chunk['loot'] = [];
     const tunnel = this.tunnels.some(([a, b]) => dist0 + CHUNK > a && dist0 < b);
     const bridge = this.bridges.some(([a, b]) => dist0 + CHUNK > a && dist0 < b);
-    const tile = 5;
-    for (let x = 0; x < CHUNK; x += tile) {
-      for (let z = -110; z < 110; z += tile) {
-        if (bridge && Math.abs(z) > 4) continue;
-        const n = this.noise.fbm((dist0 + x) * 0.025, z * 0.025, 3);
-        const c = colors[Math.floor(((n + 1) / 2) * colors.length * 0.999)];
-        ground.plane(tile, tile, x + tile / 2, 0, z + tile / 2, c, { vary: 0.035 });
-      }
+    // sol continu : construit en coordonnées « terrain » pour que le grain ne présente pas de couture
+    let terrain: THREE.Mesh | null = null;
+    if (!bridge) {
+      const ballast = new THREE.Color(0x5e554c);
+      terrain = buildTerrain({
+        x0: dist0, x1: dist0 + CHUNK, z0: -44, z1: 44, cell: 2, colors, seed: this.seed,
+        paint: (_x, z, c) => {
+          const t = Math.abs(z);
+          if (t < 2.6) c.lerp(ballast, t < 1.9 ? 0.85 : 0.45);
+        },
+      });
+      terrain.position.x = -dist0;
     }
     // ballast et voie
     ground.box(CHUNK, 0.06, 3.6, CHUNK / 2, 0.03, 0, 0x5a5048);
@@ -176,7 +179,7 @@ export class TravelLevel implements Level {
     }
     if (bridge) {
       // pont métallique au-dessus d'une rivière
-      const water = new THREE.Mesh(new THREE.PlaneGeometry(CHUNK, 220).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: winter ? 0xb8c8d0 : 0x3a5a66 }));
+      const water = new THREE.Mesh(new THREE.PlaneGeometry(CHUNK, 90).rotateX(-Math.PI / 2), winter ? Materials.vc : waterMaterial(0x3a6a78));
       water.position.set(CHUNK / 2, -3, 0);
       g.box(CHUNK, 0.5, 4.2, CHUNK / 2, -0.25, 0, 0x4a4a4a);
       for (let x = 0; x < CHUNK; x += 6) {
@@ -206,12 +209,13 @@ export class TravelLevel implements Level {
         g.layer('base');
       }
     } else {
-      // végétation et rochers hors de l'emprise de la voie
-      const density = bio.treeDensity * 22;
+      // végétation et rochers hors de l'emprise de la voie, concentrés dans la bande visible
+      const density = bio.treeDensity * 16;
       for (let i = 0; i < density; i++) {
         const x = rng.range(0, CHUNK);
         const side = rng.sign();
-        const z = side * rng.range(9, 100);
+        // côté caméra (sud), les arbres restent assez loin pour ne pas masquer le train
+        const z = side * (side > 0 ? rng.range(10.5, 44) : rng.range(6.5, 44));
         const s = 0.8 + rng.next() * 0.7;
         const t = rng.pick(bio.trees);
         let c: PropCollider = null;
@@ -227,15 +231,22 @@ export class TravelLevel implements Level {
         }
         if (Math.abs(z) < 40) colliders.push(c);
       }
-      const rocks = bio.rockDensity * 10;
+      const rocks = bio.rockDensity * 9;
       const rockC = biomeId === 'desert' ? 0xa07a50 : biomeId === 'irradie' ? 0x5a5a48 : 0x6e6a62;
       for (let i = 0; i < rocks; i++) {
         const x = rng.range(0, CHUNK);
-        const z = rng.sign() * rng.range(7, 100);
-        const c = P.rock(g, x, z, 0.5 + rng.next() * (biomeId === 'montagnes' ? 3 : 1.5), rockC, rng, winter);
-        if (Math.abs(z) < 40) colliders.push(c);
+        const z = rng.sign() * rng.range(5, 44);
+        const c = P.rock(g, x, z, 0.4 + rng.next() * (biomeId === 'montagnes' ? 2.6 : 1.3), rockC, rng, winter);
+        colliders.push(c);
       }
-      if (!winter && biomeId !== 'desert') for (let i = 0; i < 25; i++) P.grass(g, rng.range(0, CHUNK), rng.sign() * rng.range(4, 40), 1, biomeId === 'marais' ? 0x4a6a32 : 0x6a8a3a);
+      // buissons
+      const bushC = biomeId === 'desert' ? 0x8a8a4a : biomeId === 'irradie' ? 0x7a7a3a : biomeId === 'marais' ? 0x3e5a30 : winter ? 0x6a7a62 : 0x4e7032;
+      const bushes = (biomeId === 'desert' ? 3 : biomeId === 'toundra' ? 2 : 8) * (bio.treeDensity + 0.4);
+      for (let i = 0; i < bushes; i++) {
+        const x = rng.range(0, CHUNK);
+        const z = rng.sign() * rng.range(4.5, 30);
+        P.bush(g, x, z, 0.7 + rng.next() * 0.7, bushC, !winter && rng.chance(0.2) ? 0xc0303a : 0);
+      }
       if (bio.ruinDensity > 0.2 && rng.chance(bio.ruinDensity * 0.6)) {
         const x = rng.range(5, CHUNK - 5);
         const z = rng.sign() * rng.range(10, 35);
@@ -266,8 +277,33 @@ export class TravelLevel implements Level {
       }
     }
     const group = new THREE.Group();
+    if (terrain) group.add(terrain);
     group.add(ground.toGroup({ castShadow: false, receiveShadow: true }));
     if (!g.isEmpty) group.add(g.toGroup());
+    // herbe et fleurs (hors tunnel)
+    if (!tunnel) {
+      const cover = groundCoverFor(biomeId, winter);
+      if (cover.grass) {
+        const blocked = (x: number, z: number) => colliders.some((c) => c && (c.kind === 'circle' ? Math.hypot(c.x - x, c.z - z) < c.r + 0.3 : x > c.x0 - 0.3 && x < c.x1 + 0.3 && z > c.z0 - 0.3 && z < c.z1 + 0.3));
+        const sample = (min: number) => (r: Rng) => {
+          const x = r.range(0, CHUNK);
+          const z = r.sign() * r.range(min, 40);
+          if (this.noise.fbm((dist0 + x) * 0.06, z * 0.06, 2) < -0.3) return null;
+          return blocked(x, z) ? null : { x, z };
+        };
+        const dens = vegetationDensity();
+        const grass = buildGrass({ kind: cover.grass, count: Math.round(CHUNK * 75 * 0.4 * cover.density * dens), seed: this.seed + index * 31, sample: sample(2.6), colors: cover.colors });
+        if (grass) group.add(grass);
+        if (cover.tall > 0) {
+          const tall = buildGrass({ kind: cover.grass === 'roseau' ? 'roseau' : 'haute', count: Math.round(CHUNK * 75 * 0.05 * cover.tall * dens), seed: this.seed + index * 37, sample: sample(4), colors: cover.colors, scale: [0.9, 1.4] });
+          if (tall) group.add(tall);
+        }
+        if (cover.flowers) {
+          const fl = buildFlowers({ count: Math.round(CHUNK * 75 * 0.03 * cover.density * dens), seed: this.seed + index * 41, sample: sample(3), colors: cover.flowers });
+          if (fl) group.add(fl);
+        }
+      }
+    }
     return { index, group, colliders, loot, tunnel };
   }
 
@@ -435,13 +471,7 @@ export class TravelLevel implements Level {
 
   dispose(): void {
     this.game.scene.remove(this.root);
-    this.root.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.geometry.dispose();
-        const m = o.material as THREE.Material;
-        if (m !== Materials.vc && m !== Materials.vcFaded && m !== Materials.glow && m !== Materials.glass) m.dispose();
-      }
-    });
+    disposeObject(this.root);
     for (const e of this.enemies) e.dispose();
     this.enemies = [];
   }

@@ -345,6 +345,7 @@ export class Game implements CombatHost {
         winter: st.season === 'hiver' || env.biome === 'toundra',
         tint: gas > 0 ? 0xc8d060 : rad > 0.5 ? 0x7dff3a : env.tint,
         tintAmount: gas > 0 ? 0.35 : rad > 0.5 ? Math.min(0.3, rad * 0.05) : env.tintAmount,
+        scroll: travel?.progress ?? 0,
       }, dt);
     }
     // ---- arrivée

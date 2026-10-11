@@ -5,6 +5,8 @@ import { Rng } from '../core/rng';
 import { rectContains, rectsOverlap, type Rect } from '../core/math';
 import { rollLoot, type LootEntry, type LootProfile } from './loot';
 import * as P from '../render/props';
+import { Noise2D } from '../core/noise';
+import { buildTerrain, buildGrass, buildFlowers, groundCoverFor, vegetationDensity } from '../render/terrain';
 import type { PropCollider } from '../render/props';
 import type { EnemyId } from '../data/enemies';
 import type { KeycardColor } from '../data/items';
@@ -176,6 +178,9 @@ export class StationBuilder {
   readonly lights: LightSpec[] = [];
   readonly darkRects: Rect[] = [];
   readonly occupied: Rect[] = [];
+  /** Surfaces pavées ou dallées (routes, places) : pas d'herbe. */
+  readonly paved: Rect[] = [];
+  private groundSeed = 1;
   private counter = 0;
   bounds: Rect = { x0: -125, z0: -48, x1: 75, z1: 82 };
   platform: Rect = { x0: -100, z0: 2.3, x1: 18, z1: 6.6 };
@@ -233,20 +238,62 @@ export class StationBuilder {
 
   // ------------------------------------------------------------------ sol, voies, quai
 
-  ground(colors: number[], noise: (x: number, z: number) => number): void {
+  /** Sol continu de la gare (couleurs du biome fondues, ballast sous la voie). */
+  ground(colors: number[], seed: number): void {
     const b = this.bounds;
-    const size = 4;
-    const g = new GeoBuilder();
-    const ext = 60;
-    for (let x = b.x0 - ext; x < b.x1 + ext; x += size) {
-      for (let z = b.z0 - ext; z < b.z1 + ext; z += size) {
-        const n = noise(x, z);
-        const c = colors[Math.floor(((n + 1) / 2) * colors.length * 0.999)];
-        g.plane(size, size, x + size / 2, 0, z + size / 2, c, { vary: 0.04 });
-      }
-    }
-    const mesh = g.toGroup({ castShadow: false, receiveShadow: true });
+    const ext = 26;
+    this.groundSeed = seed;
+    const ballast = new THREE.Color(0x5e554c);
+    const mesh = buildTerrain({
+      x0: b.x0 - ext, x1: b.x1 + ext, z0: b.z0 - ext, z1: b.z1 + ext,
+      cell: 2,
+      colors,
+      seed,
+      paint: (x, z, c) => {
+        const t = Math.abs(z);
+        if (t < 2.6) c.lerp(ballast, t < 1.9 ? 0.85 : 0.45);
+      },
+    });
     this.root.add(mesh);
+  }
+
+  /** Une zone pavée (route, place) : la végétation n'y pousse pas. */
+  pave(r: Rect): void {
+    this.paved.push(r);
+  }
+
+  /** Herbe, roseaux et fleurs semés là où rien n'est construit. */
+  private plantGroundCover(): void {
+    const cover = groundCoverFor(this.biome, this.winter);
+    if (!cover.grass) return;
+    const b = this.bounds;
+    const area = (b.x1 - b.x0) * (b.z1 - b.z0);
+    const clump = new Noise2D(this.groundSeed + 77);
+    const ok = (x: number, z: number): boolean => {
+      if (Math.abs(z) < 2.4) return false;
+      if (rectContains(this.platform, x, z, 0.4)) return false;
+      if (this.occupied.some((r, i) => i > 0 && rectContains(r, x, z, 0.2))) return false;
+      if (this.paved.some((r) => rectContains(r, x, z, 0.3))) return false;
+      if (this.buildings.some((bd) => rectContains(bd.rect, x, z, 0.4))) return false;
+      return !this.colliders.blocked(x, z, 0.25);
+    };
+    const sample = (threshold: number) => (rng: Rng) => {
+      const x = rng.range(b.x0, b.x1);
+      const z = rng.range(b.z0, b.z1);
+      if (clump.fbm(x * 0.07, z * 0.07, 2) < threshold) return null;
+      return ok(x, z) ? { x, z } : null;
+    };
+    const dens = vegetationDensity();
+    const grass = buildGrass({ kind: cover.grass, count: Math.round(area * 0.42 * cover.density * dens), seed: `${this.stationId}:herbe`, sample: sample(-0.45), colors: cover.colors });
+    if (grass) this.root.add(grass);
+    if (cover.tall > 0) {
+      const tall = buildGrass({ kind: cover.grass === 'roseau' ? 'roseau' : 'haute', count: Math.round(area * 0.05 * cover.tall * dens), seed: `${this.stationId}:haute`, sample: sample(0.1), colors: cover.colors, scale: [0.9, 1.4] });
+      if (tall) this.root.add(tall);
+    }
+    if (cover.flowers) {
+      const fl = buildFlowers({ count: Math.round(area * 0.03 * cover.density * dens), seed: `${this.stationId}:fleurs`, sample: sample(0.05), colors: cover.flowers });
+      if (fl) this.root.add(fl);
+    }
   }
 
   track(x0: number, x1: number, z: number, color = 0x4a3a2c): void {
@@ -848,6 +895,7 @@ export class StationBuilder {
   /** Assemble la géométrie statique. */
   finalize(): void {
     if (!this.g.isEmpty) this.root.add(this.g.toGroup());
+    this.plantGroundCover();
     // des décors ont pu être posés après les ennemis : on dégage ceux qui se retrouvent emmurés
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];

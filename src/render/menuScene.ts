@@ -74,10 +74,11 @@ export class MenuScene {
   update(dt: number): void {
     this.t += dt;
     const eng = this.engine;
-    eng.rig.target.set(-14 + Math.sin(this.t * 0.05) * 10, 1.5, 2);
-    eng.rig.yaw = 0.35 + Math.sin(this.t * 0.04) * 0.2;
-    eng.rig.pitch = 0.42;
-    eng.rig.setZoom(34);
+    // travelling lent le long du train (sans rotation : l'image reste calée sur la grille de pixels)
+    eng.rig.target.set(-12 + Math.sin(this.t * 0.05) * 12, 1.5, 2);
+    eng.rig.yaw = 0.42;
+    eng.rig.pitch = 0.62;
+    eng.rig.setZoom(30);
     eng.rig.update(dt);
     eng.setEnvironment({ minutes: 21 * 60 + 30, fogColor: 0x9aa8b8, weather: 'neige', darkness: 0, winter: true }, dt);
     this.puffT -= dt;
