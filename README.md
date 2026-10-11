@@ -10,7 +10,15 @@ Le jeu tourne **entièrement dans le navigateur, sans serveur**. Les sauvegardes
 
 ## Lancer le jeu
 
-### Version prête à jouer
+### Jouer en ligne (GitHub Pages)
+
+**https://autistic4chanboy-stack.github.io/4za45az56az564az456zd5az46/**
+
+Chaque push sur la branche principale reconstruit le jeu et le republie automatiquement (workflow `.github/workflows/pages.yml` : installation, tests, build, déploiement).
+
+Activation à faire une seule fois par le propriétaire du dépôt : **Settings → Pages → Build and deployment → Source : « GitHub Actions »**, puis relancer le workflow depuis l'onglet **Actions** (« Déployer sur GitHub Pages » → *Run workflow*). Tant que Pages n'est pas activé, le workflow construit et teste le jeu mais saute le déploiement, avec un avertissement qui rappelle cette étape.
+
+### Version prête à jouer (fichier unique)
 
 ```bash
 npm install

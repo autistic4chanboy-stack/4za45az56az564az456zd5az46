@@ -1,0 +1,64 @@
+# Construit le jeu (fichier HTML unique) et le publie sur GitHub Pages.
+# Activation unique côté dépôt : Settings → Pages → Build and deployment → Source : « GitHub Actions ».
+name: Déployer sur GitHub Pages
+
+on:
+  push:
+    branches: ['claude/eloquent-dirac-bmugb3', 'main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.pages.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: GitHub Pages est-il activé (source « GitHub Actions ») ?
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=$(curl -s -o pages.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages")
+          type=$(jq -r '.build_type // empty' pages.json 2>/dev/null || true)
+          if [ "$code" = "200" ] && [ "$type" = "workflow" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            msg="GitHub Pages n'est pas encore activé avec la source « GitHub Actions » (réponse $code, type '${type:-aucun}'). Une seule fois : Settings → Pages → Build and deployment → Source : GitHub Actions, puis relancez ce workflow (onglet Actions → Déployer sur GitHub Pages → Run workflow)."
+            echo "::warning title=GitHub Pages à activer::$msg"
+            { echo "### GitHub Pages à activer"; echo; echo "$msg"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.pages.outputs.ready == 'true'
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
