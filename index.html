@@ -15,6 +15,7 @@
       <canvas id="game"></canvas>
       <div id="ui"></div>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <!-- Sur GitHub Pages servi depuis la branche (sources brutes), le module ne se charge pas : on bascule sur le jeu compilé. -->
+    <script type="module" src="/src/main.ts" onerror="location.replace('jouer/')"></script>
   </body>
 </html>

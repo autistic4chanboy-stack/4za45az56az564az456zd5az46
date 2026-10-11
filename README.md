@@ -14,9 +14,10 @@ Le jeu tourne **entièrement dans le navigateur, sans serveur**. Les sauvegardes
 
 **https://autistic4chanboy-stack.github.io/4za45az56az564az456zd5az46/**
 
-Chaque push sur la branche principale reconstruit le jeu et le republie automatiquement (workflow `.github/workflows/pages.yml` : installation, tests, build, déploiement).
+Deux façons de publier, au choix dans **Settings → Pages → Build and deployment → Source** :
 
-Activation à faire une seule fois par le propriétaire du dépôt : **Settings → Pages → Build and deployment → Source : « GitHub Actions »**, puis relancer le workflow depuis l'onglet **Actions** (« Déployer sur GitHub Pages » → *Run workflow*). Tant que Pages n'est pas activé, le workflow construit et teste le jeu mais saute le déploiement, avec un avertissement qui rappelle cette étape.
+- **Deploy from a branch** (réglage actuel) : Pages sert les fichiers du dépôt tels quels. La page d'accueil (`index.html`, l'entrée Vite) ne peut pas charger les sources TypeScript et bascule d'elle-même sur `jouer/index.html`, le jeu compilé en un seul fichier. Après chaque modification du jeu, régénérez-le avec `npm run build:pages` et committez `jouer/index.html`.
+- **GitHub Actions** (recommandé) : chaque push reconstruit, teste et publie le jeu automatiquement (workflow `.github/workflows/pages.yml`), sans fichier compilé dans le dépôt. Après le changement de source, relancez une fois le workflow depuis l'onglet **Actions** (« Déployer sur GitHub Pages » → *Run workflow*).
 
 ### Version prête à jouer (fichier unique)
 
@@ -34,6 +35,7 @@ npm install
 npm run dev        # serveur de développement Vite
 npm test           # tests unitaires (vitest)
 npm run typecheck  # vérification TypeScript
+npm run build:pages  # build + copie dans jouer/index.html (GitHub Pages servi depuis la branche)
 ```
 
 Il faut Node 20 ou plus récent. Le fichier `.npmrc` active `legacy-peer-deps` pour contourner un bug de résolution de npm.
