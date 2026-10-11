@@ -1,7 +1,7 @@
 import { h, btn, clear } from './dom';
 import { icon } from './icons';
 import { DIFFICULTIES, type Difficulty } from '../data/balance';
-import { saveSummary, loadGame, hasStorage, exportSave, importSave, deleteSave, saveGame } from '../state/save';
+import { saveSummary, loadGame, hasStorage, exportSave, importSave, deleteSave, saveGame, type Settings } from '../state/save';
 import { loadMeta, saveMeta, META_PERKS } from '../state/meta';
 import { formatTime } from '../core/math';
 import type { Game } from '../game/Game';
@@ -176,7 +176,21 @@ export function renderOptions(ui: UI, game: Game, inner: HTMLElement, back: () =
     for (const q of ['basse', 'moyenne', 'haute'] as const) quality.append(btn(q, () => { s.quality = q; game.applySettings(); renderQ(); }, s.quality === q ? 'active' : ''));
   };
   renderQ();
-  const toggle = (label: string, key: 'shadows' | 'showFps' | 'screenShake' | 'tutorial') => {
+  const pixels = h('div', { class: 'choice' });
+  const renderPx = () => {
+    clear(pixels);
+    const sizes: [number, string][] = [[0, 'auto'], [2, 'fins'], [3, 'moyens'], [4, 'gros'], [5, 'énormes']];
+    for (const [v, label] of sizes) pixels.append(btn(label, () => { s.pixelSize = v; game.applySettings(); renderPx(); }, s.pixelSize === v ? 'active small' : 'small'));
+  };
+  renderPx();
+  const palette = h('div', { class: 'choice' });
+  const renderPal = () => {
+    clear(palette);
+    const modes: [Settings['palette'], string][] = [['paliers', 'Paliers (DA)'], ['stricte', 'Palette tramée'], ['aucune', 'Couleurs libres']];
+    for (const [v, label] of modes) palette.append(btn(label, () => { s.palette = v; game.applySettings(); renderPal(); }, s.palette === v ? 'active small' : 'small'));
+  };
+  renderPal();
+  const toggle = (label: string, key: 'shadows' | 'showFps' | 'screenShake' | 'tutorial' | 'outlines' | 'bloom') => {
     const b = btn(`${label} : ${s[key] ? 'oui' : 'non'}`, () => {
       s[key] = !s[key];
       game.applySettings();
@@ -191,7 +205,10 @@ export function renderOptions(ui: UI, game: Game, inner: HTMLElement, back: () =
     slider('Musique', 'music'),
     slider('Ambiance', 'ambient'),
     h('div', { class: 'small muted' }, 'Qualité graphique'), quality,
-    h('div', { class: 'row wrap' }, toggle('Ombres', 'shadows'), toggle('Secousses', 'screenShake'), toggle('Afficher les i/s', 'showFps'), toggle('Astuces', 'tutorial')),
+    h('div', { class: 'small muted' }, 'Taille des pixels'), pixels,
+    h('div', { class: 'small muted' }, 'Couleurs'), palette,
+    h('div', { class: 'row wrap' }, toggle('Contours', 'outlines'), toggle('Halos lumineux', 'bloom'), toggle('Ombres', 'shadows')),
+    h('div', { class: 'row wrap' }, toggle('Secousses', 'screenShake'), toggle('Afficher les i/s', 'showFps'), toggle('Astuces', 'tutorial')),
     btn('Retour', back),
   );
 }

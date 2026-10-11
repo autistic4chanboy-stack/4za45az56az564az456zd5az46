@@ -102,6 +102,20 @@ Certains sont des **voleurs**, d'autres des **traîtres** qui sabotent en plein 
 
 Trois niveaux de difficulté : Voyageur, Convoyeur et Damné du Rail.
 
+### Direction artistique : « Rouille et braises »
+
+Un monde de cendre froide traversé par la chaleur des lampes, du charbon et de la rouille, rendu en **pixel art 3D** :
+
+- la scène est rendue en basse résolution puis agrandie au pixel près, avec une caméra orthographique calée sur la grille de texels (aucun scintillement, défilement fluide) ;
+- un post-traitement maison ajoute les contours, les reflets d'arêtes, les halos lumineux, l'étalonnage de chaque heure du jour et une postérisation des couleurs (ou, en option, la palette stricte de la DA avec tramage) ;
+- les matériaux sont des shaders « toon » : terminateur net, ombres franches, ombres de nuages qui dérivent, neige qui tient sur ce qui regarde le ciel, feuillage au vent, eau animée ;
+- murs, toits et sols sont décorés par des motifs procéduraux calculés dans le shader (planches, briques, moellons, béton, tôle ondulée, tuiles, bardeaux, pavés…), nets au texel près et sans texture ;
+- les vitres reflètent le ciel le jour et s'allument la nuit ; les cheminées fument ;
+- météo en pixels : pluie en traits fins et éclaboussures, flocons, cendres et braises, tempête de sable, orages avec éclairs, nappes de brume au ras du sol ;
+- interface en police pixel, cadres crantés et jauges segmentées.
+
+Les **Options** permettent de choisir la taille des pixels, le rendu des couleurs (paliers, palette tramée ou couleurs libres), les contours, les halos, les ombres et la qualité.
+
 ---
 
 ## Architecture
@@ -109,7 +123,7 @@ Trois niveaux de difficulté : Voyageur, Convoyeur et Damné du Rail.
 ```
 src/
   core/      RNG déterministe, maths, bruit, entrées (AZERTY/QWERTY), audio procédural (WebAudio)
-  render/    moteur three.js, caméra, géométrie fusionnée, particules, humanoïdes et créatures
+  render/    moteur three.js, pipeline pixel art, shaders toon et motifs, terrain, météo, particules, modèles
   data/      données de jeu : objets, armes, wagons, ennemis, biomes, gares, PNJ, équilibrage
   state/     état sérialisable, nouvelle partie, sauvegarde (localStorage + export JSON)
   world/     cartes (Histoire et Infini), génération des 20 types de gares, collisions, butin
@@ -123,6 +137,7 @@ tests/       tests vitest (simulation, cartes, génération des gares, sauvegard
 Notes techniques :
 
 - Le train reste à l'origine du monde ; en voyage, c'est le décor qui défile. Il est généré par tronçons selon le biome traversé.
-- Le décor statique est fusionné en quelques maillages à couleurs de sommets. Les particules utilisent des billboards instanciés et l'éclairage dynamique passe par un pool fixe de lumières.
+- Le décor statique est fusionné en quelques maillages à couleurs de sommets ; un attribut par sommet choisit le motif procédural dessiné par le shader. Herbes et fleurs sont instanciées, les particules utilisent des billboards instanciés et l'éclairage dynamique passe par un pool fixe de lumières.
+- Rendu : `render/pixel.ts` (cible basse résolution, contours, halos, étalonnage, palette), `render/toon.ts` (éclairage stylisé, motifs, vitres), `render/palette.ts` (palette de la DA).
 - 1 seconde réelle = 1 minute de jeu.
 - Le plugin Vite `inlineSingleFile` (dans `vite.config.ts`) intègre JS et CSS au HTML final.

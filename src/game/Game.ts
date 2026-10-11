@@ -117,11 +117,24 @@ export class Game implements CombatHost {
     setStationNameLookup((id) => this.state?.map.nodes[id]?.name ?? id);
   }
 
+  private appliedQuality = '';
+
   applySettings(): void {
     const s = this.settings;
     this.audio.volumes = { master: s.master, sfx: s.sfx, music: s.music, ambient: s.ambient };
     this.audio.applyVolumes();
-    this.engine.setQuality(s.quality, s.shadows);
+    // réglages du rendu pixel ; la qualité (recompilation des matériaux) n'est réappliquée que si elle change
+    const px = this.engine.pixel.settings;
+    const resize = px.pixelSize !== s.pixelSize;
+    px.pixelSize = s.pixelSize;
+    px.palette = s.palette;
+    px.outlines = s.outlines;
+    px.bloom = s.bloom;
+    const q = `${s.quality}:${s.shadows}`;
+    if (q !== this.appliedQuality) {
+      this.appliedQuality = q;
+      this.engine.setQuality(s.quality, s.shadows);
+    } else if (resize) this.engine.resize();
     this.engine.rig.shakeEnabled = s.screenShake;
     saveSettings(s);
   }
@@ -348,6 +361,7 @@ export class Game implements CombatHost {
         tint: gas > 0 ? 0xc8d060 : rad > 0.5 ? 0x7dff3a : env.tint,
         tintAmount: gas > 0 ? 0.35 : rad > 0.5 ? Math.min(0.3, rad * 0.05) : env.tintAmount,
         scroll: travel?.progress ?? 0,
+        sand: env.biome === 'desert' && st.season !== 'hiver' ? 1 : 0,
       }, dt);
     }
     // ---- arrivée
@@ -1101,7 +1115,15 @@ export class Game implements CombatHost {
     }
     const rig = this.engine.rig;
     const wind = toonUniforms.uWind.value;
+    const hour = (((st.time % 1440) + 1440) % 1440) / 60;
+    const dawn = hour > 4.5 && hour < 8.5 ? 1 - Math.abs(hour - 6.5) / 2 : 0;
+    let mist = w === 'brume' ? 0.85 : w === 'pluie' ? 0.22 : 0;
+    if (env?.biome === 'marais') mist = Math.max(mist, 0.42);
+    mist = Math.max(mist, dawn * 0.4);
+    if (this.level instanceof TravelLevel && this.level.inTunnel()) mist = 0;
     this.weatherFx.update({
+      mist,
+      mistColor: this.engine.fog.color,
       dt,
       kind,
       cx: rig.target.x,

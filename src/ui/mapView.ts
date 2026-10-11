@@ -98,7 +98,7 @@ export function renderMap(ui: UI, game: Game, departMode: boolean): HTMLElement 
       const ic = svg('g', { transform: 'translate(-12,-12)', style: `color:${color}` });
       ic.innerHTML = iconInner(ARCHETYPES[n.archetype].icon);
       g.append(ic);
-      const t = svg('text', { y: 42, 'text-anchor': 'middle', 'font-size': 13, fill: n.visited ? '#ece4d3' : '#c8bca8', 'font-family': 'Oswald, sans-serif' });
+      const t = svg('text', { y: 42, 'text-anchor': 'middle', 'font-size': 14, fill: n.visited ? '#ece4d3' : '#c8bca8', 'font-family': "'Pixelify Sans', sans-serif" });
       t.textContent = n.name.length > 22 ? `${n.name.slice(0, 21)}…` : n.name;
       g.append(t);
     } else {

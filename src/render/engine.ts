@@ -215,6 +215,8 @@ export interface EnvParams {
   winter: boolean;
   /** Distance parcourue (voyage) : les ombres de nuages défilent avec le terrain. */
   scroll?: number;
+  /** 0..1 : rides de sable (désert). */
+  sand?: number;
 }
 
 /** Une ambiance de la direction artistique (couleurs de lumière et d'étalonnage). */
@@ -371,7 +373,7 @@ export class Engine {
     // météo
     const w = p.weather;
     const wk = this.weatherK;
-    const dimT = w === 'tempete' ? 0.45 : w === 'brume' ? 0.62 : w === 'poussiere' ? 0.7 : w === 'pluie' || w === 'neige' || w === 'cendres' ? 0.72 : 1;
+    const dimT = w === 'tempete' ? 0.5 : w === 'brume' ? 0.8 : w === 'poussiere' ? 0.74 : w === 'pluie' || w === 'neige' || w === 'cendres' ? 0.76 : 1;
     const hazeT = w === 'brume' ? 0.85 : w === 'tempete' ? 0.8 : w === 'poussiere' ? 0.7 : w === 'neige' || w === 'cendres' ? 0.45 : w === 'pluie' ? 0.4 : 0;
     const cloudT = w === 'clair' ? 0.3 : w === 'brume' ? 0.15 : 0.5;
     const coverT = w === 'clair' ? 0.64 : w === 'tempete' ? 0.3 : 0.45;
@@ -422,6 +424,8 @@ export class Engine {
       g.lift.lerp(this.tmpC2.setHex(p.tint).multiplyScalar(0.08), tintK);
     }
     if (w === 'poussiere') g.gain.multiply(this.tmpC.setRGB(1.06, 0.98, 0.84));
+    // brume, pluie, neige : voile laiteux dans les ombres plutôt qu'un simple assombrissement
+    if (wk.haze > 0.01) g.lift.lerp(this.tmpC.copy(this.bg).multiplyScalar(0.42 * clamp01(this.daylight + 0.3)), wk.haze * 0.55);
     g.saturation = mood.sat * lerp(1, 0.78, wk.haze * 0.6 + (1 - wk.dim) * 0.4);
     g.contrast = lerp(1.06, 0.94, wk.haze);
     g.vignette = mood.vignette + p.darkness * 0.25;
@@ -436,6 +440,7 @@ export class Engine {
     tu.uCloudOffset.value.set(this.time * 0.006 * wk.wind + (p.scroll ?? 0) * 0.022, this.time * 0.0025 * wk.wind);
     tu.uSnow.value = ease(tu.uSnow.value, p.winter ? 0.85 : 0, 0.5);
     tu.uNightGlow.value = smoothstep(0.62, 0.3, this.daylight);
+    tu.uSand.value = p.sand ?? 0;
     tu.uSkyTint.value.copy(this.bg);
     this.snapEnv = false;
   }

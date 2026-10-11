@@ -18,8 +18,13 @@
   --cyan: #86d8ff;
   --violet: #b083e8;
   --yellow: #f0d060;
-  --font-title: 'Oswald', 'Arial Narrow', 'Segoe UI', sans-serif;
-  --font-body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --font-title: 'Pixelify Sans', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  --font-body: 'Pixelify Sans', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Jersey 10', 'Pixelify Sans', 'Arial Narrow', sans-serif;
+  --ink: #0c0a08;
+  /* coins crantés d'un pixel d'interface (2 px) */
+  --notch: polygon(2px 0, calc(100% - 2px) 0, calc(100% - 2px) 2px, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 2px calc(100% - 2px), 0 calc(100% - 2px), 0 2px, 2px 2px);
+  --notch4: polygon(4px 0, calc(100% - 4px) 0, calc(100% - 4px) 2px, calc(100% - 2px) 2px, calc(100% - 2px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 2px) calc(100% - 4px), calc(100% - 2px) calc(100% - 2px), calc(100% - 4px) calc(100% - 2px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 2px), 2px calc(100% - 2px), 2px calc(100% - 4px), 0 calc(100% - 4px), 0 4px, 2px 4px, 2px 2px, 4px 2px);
   color-scheme: dark;
 }
 
@@ -34,6 +39,8 @@ html, body {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 15px;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -358,3 +365,113 @@ html.touch .hud-obj.compact { top: 104px; }
 @media (orientation: portrait) and (max-width: 640px) {
   html.touch.ingame:not(.portrait-ok) .rotate-hint { display: flex; }
 }
+
+/* =============================================================
+   Habillage pixel : cadres crantés, reliefs d'un ou deux pixels,
+   aplats francs plutôt que dégradés, polices pixel.
+   ============================================================= */
+#game { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' shape-rendering='crispEdges'%3E%3Cg fill='%230c0a08'%3E%3Crect x='14' y='1' width='4' height='11'/%3E%3Crect x='14' y='20' width='4' height='11'/%3E%3Crect x='1' y='14' width='11' height='4'/%3E%3Crect x='20' y='14' width='11' height='4'/%3E%3Crect x='14' y='14' width='4' height='4'/%3E%3C/g%3E%3Cg fill='%23ffd060'%3E%3Crect x='15' y='2' width='2' height='9'/%3E%3Crect x='15' y='21' width='2' height='9'/%3E%3Crect x='2' y='15' width='9' height='2'/%3E%3Crect x='21' y='15' width='9' height='2'/%3E%3Crect x='15' y='15' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E") 16 16, crosshair; }
+
+h1, h2, h3, h4 { font-weight: 600; letter-spacing: 0.05em; }
+.menu h1.title, .banner h1, .hud-top .loc, .modal-head h2, .hud-alert { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.06em; }
+.menu h1.title { font-size: 92px; line-height: 0.82; letter-spacing: 0.04em; color: #f2e6cc; text-shadow: 4px 4px 0 #3a1c12, 8px 8px 0 rgba(0, 0, 0, 0.45); }
+.menu .tagline { font-size: 14px; letter-spacing: 0.24em; }
+.banner h1 { font-size: 60px; letter-spacing: 0.08em; text-shadow: 3px 3px 0 #2a140c, 6px 6px 0 rgba(0, 0, 0, 0.5); }
+.hud-top .loc { font-size: 24px; line-height: 1; }
+.modal-head h2 { font-size: 28px; line-height: 1; }
+.hud-alert { font-size: 26px; text-shadow: 2px 2px 0 #000; }
+
+/* cadres */
+.hud-panel, .prompt, .toast, .modal, .card, .dlg-text, .bubble {
+  border-radius: 0;
+  clip-path: var(--notch);
+}
+.hud-panel, .prompt, .toast {
+  background: rgba(20, 16, 12, 0.88);
+  border: 2px solid var(--ink);
+  box-shadow: inset 0 0 0 2px #463a2c, inset 0 2px 0 2px #5a4a36;
+}
+.toast { border-left-width: 2px; box-shadow: inset 4px 0 0 0 var(--blue), inset 0 0 0 2px #463a2c; padding-left: 14px; }
+.toast.bon { box-shadow: inset 4px 0 0 0 var(--green), inset 0 0 0 2px #463a2c; }
+.toast.mauvais { box-shadow: inset 4px 0 0 0 var(--red), inset 0 0 0 2px #463a2c; }
+.toast.quete { box-shadow: inset 4px 0 0 0 var(--amber), inset 0 0 0 2px #463a2c; }
+.prompt { box-shadow: inset 0 0 0 2px var(--amber-soft); }
+.modal {
+  clip-path: var(--notch4);
+  border: 2px solid var(--ink);
+  background: #1d1915;
+  box-shadow: inset 0 0 0 2px #4a3e31, inset 0 0 0 4px #14110d;
+}
+.modal-head { background: #2a231c; border-bottom: 2px solid var(--ink); box-shadow: inset 0 -2px 0 #3a3027, inset 0 2px 0 #4a3e31; }
+.modal-foot { border-top: 2px solid var(--ink); box-shadow: inset 0 2px 0 #2a231c; }
+.tabs { border-bottom: 2px solid var(--ink); background: #16120e; }
+.tab { border-bottom-width: 3px; }
+.card { border: 2px solid var(--ink); box-shadow: inset 0 0 0 2px #3a3128; background: #251f19; }
+.card.sel { box-shadow: inset 0 0 0 2px var(--amber); }
+.dlg-text { border: 2px solid var(--ink); box-shadow: inset 0 0 0 2px #3a3128; }
+.item, .inv-cell, .dlg-opt, .hud-weapon .slot, .wagon-chip, .key, .pill, .hud-tag, select, input[type='text'], input[type='number'], .mapwrap, .portrait, .kp-screen, .lockpick canvas, .arcade canvas { border-radius: 0; }
+.item, .inv-cell, .dlg-opt { border-width: 2px; }
+.pill, .hud-tag { clip-path: var(--notch); }
+.bubble { border-radius: 0; box-shadow: inset 0 0 0 2px #b8a888; }
+.bubble::after { border-width: 6px 6px 0 6px; margin-left: -6px; bottom: -6px; }
+
+/* boutons : aplat, lumière en haut, ombre en bas, enfoncement d'un cran */
+.btn {
+  border-radius: 0;
+  border: 2px solid var(--ink);
+  background: #3a3027;
+  box-shadow: inset 0 2px 0 #5a4a3a, inset 0 -3px 0 #251e17;
+  clip-path: var(--notch);
+  transition: none;
+  font-weight: 600;
+}
+.btn:hover:not(:disabled) { background: #4a3c2e; border-color: var(--ink); box-shadow: inset 0 2px 0 #6a5844, inset 0 -3px 0 #2a2219, inset 0 0 0 2px var(--amber-soft); }
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 3px 0 #251e17; }
+.btn.primary { background: #cf912e; color: #1b140b; box-shadow: inset 0 2px 0 #f6c766, inset 0 -3px 0 #8a5a18; }
+.btn.primary:hover:not(:disabled) { background: #e0a23a; box-shadow: inset 0 2px 0 #ffd88a, inset 0 -3px 0 #9a6a1e; }
+.btn.danger { background: #3a2018; color: #ffb3a4; box-shadow: inset 0 2px 0 #5a3024, inset 0 -3px 0 #24120c; }
+.btn.danger:hover:not(:disabled) { background: #4a281c; box-shadow: inset 0 2px 0 #6a3a2a, inset 0 -3px 0 #24120c, inset 0 0 0 2px var(--red); }
+.btn.ghost { background: rgba(0, 0, 0, 0.25); box-shadow: inset 0 0 0 2px #3a3128; }
+.btn.active { box-shadow: inset 0 2px 0 #5a4a3a, inset 0 -3px 0 #251e17, inset 0 0 0 2px var(--amber); }
+
+/* jauges segmentées */
+.bar { border-radius: 0; border: 2px solid var(--ink); background: #17130f; box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.6); }
+.bar-fill { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.3), inset 0 -2px 0 rgba(0, 0, 0, 0.28); transition: width 0.15s steps(4); }
+.bar::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 6px, rgba(12, 10, 8, 0.45) 6px 8px); pointer-events: none; }
+.bar.thin::after { display: none; }
+.bar-label { z-index: 1; font-size: 11px; text-shadow: 1px 1px 0 #000; }
+.bar.hp .bar-fill { background: #d8473a; }
+.bar.st .bar-fill { background: #7fbc58; }
+.bar.warm .bar-fill { background: linear-gradient(90deg, #4a8ad0 0 33%, #9a9a8a 33% 66%, #e0a050 66%); }
+.bar.rad .bar-fill { background: #9ad83a; }
+.bar.morale .bar-fill { background: #e0b048; }
+.bar.xp .bar-fill { background: #8a68d8; }
+.bar.coal .bar-fill { background: #7a7a7a; }
+.bar.power .bar-fill { background: #f0cc40; }
+.bar.shield .bar-fill { background: #58b0f0; }
+.bar.heat .bar-fill { background: #ee5a2a; }
+.wagon-chip { border: 2px solid var(--ink); }
+.wagon-chip .fill { background: #6fa85a; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.25); }
+.wagon-chip.mid .fill { background: #d8a83a; }
+.wagon-chip.low .fill { background: #d8473a; }
+.enemy-bar { border-radius: 0; border: 1px solid #000; }
+.enemy-bar .fill { background: #e0503c; }
+.enemy-bar.boss .fill { background: #f09a2a; }
+.key { border: 2px solid var(--amber); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.5); clip-path: var(--notch); }
+
+/* lisibilité : la police pixel a un œil plus petit */
+.hud-row, .hud-top .sub, .hud-top .route, .gauges, .hud-weapon .quick { font-size: 13px; }
+.hud-res { font-size: 14px; }
+.hud-obj { font-size: 14px; }
+.hud-obj h4 { font-size: 14px; }
+.toast { font-size: 15px; }
+.item .sub, .small, .pill, .hud-tag { font-size: 13px; }
+.dlg-text { font-size: 18px; line-height: 1.45; }
+.dlg-opt { font-size: 16px; }
+.story p { font-size: 18px; }
+.nametag { font-size: 13px; text-shadow: 1px 1px 0 #000; }
+.float { font-size: 17px; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+.bubble { font-size: 14px; }
+.hud-weapon .ammo { font-family: var(--font-display); font-size: 32px; line-height: 1; font-weight: 400; }
+.paper { border-radius: 0; clip-path: var(--notch4); font-family: var(--font-body); font-size: 17px; }
+.vignette.hurt { background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 20, 10, 0.5) 100%); }

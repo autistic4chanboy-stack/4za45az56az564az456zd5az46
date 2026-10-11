@@ -24,6 +24,8 @@ export const toonUniforms = {
   uSnowColor: { value: new THREE.Color(0xeef3f7) },
   /** Nombre de paliers des lumières ponctuelles. */
   uLightBands: { value: 4 },
+  /** 0..1 : rides de sable sur le sol (désert). */
+  uSand: { value: 0 },
   /** 0 = jour, 1 = nuit : allume les fenêtres. */
   uNightGlow: { value: 0 },
   /** Couleur du ciel (reflets des vitres). */
@@ -82,6 +84,7 @@ uniform vec2 uCloudOffset;
 uniform float uSnow;
 uniform vec3 uSnowColor;
 uniform float uLightBands;
+uniform float uSand;
 varying vec3 vTWorld;
 varying vec3 vTLocal;
 float toonSunShadow = 1.0;
@@ -403,6 +406,13 @@ vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
     float h = tHash( cell );
     float g = 1.0 + ( big - 0.5 ) * 0.12 + ( mid - 0.5 ) * 0.08;
     g += step( 0.88, h ) * 0.09 - step( h, 0.08 ) * 0.09;
+    if ( uSand > 0.0 ) {
+      // rides de sable sinueuses : crête claire, creux ombré
+      float wv = gp.x * 0.85 + gp.y * 0.3 + tNoise( gp * 0.12 ) * 4.5;
+      float fw = fwidth( wv );
+      float r = fract( wv );
+      g += ( step( r, fw ) * 0.08 - step( 1.0 - fw, r ) * 0.06 ) * uSand * ( 1.0 - smoothstep( 0.3, 0.5, fw ) );
+    }
     diffuseColor.rgb *= g;
   }
 #endif

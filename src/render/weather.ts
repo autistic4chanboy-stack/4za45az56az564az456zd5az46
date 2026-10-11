@@ -35,6 +35,47 @@ void main() {
 }
 `;
 
+const MIST_VERT = /* glsl */ `
+varying vec3 vW;
+#include <fog_pars_vertex>
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vW = w.xyz;
+  vec4 mvPosition = viewMatrix * w;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}
+`;
+
+const MIST_FRAG = /* glsl */ `
+uniform vec2 uOffset;
+uniform float uDensity;
+uniform vec3 uColor;
+uniform float uSeed;
+varying vec3 vW;
+float mHash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float mNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mHash(i), mHash(i + vec2(1.0, 0.0)), u.x), mix(mHash(i + vec2(0.0, 1.0)), mHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+void main() {
+  vec2 p = vW.xz * 0.05 + uOffset + uSeed;
+  float n = mNoise(p) * 0.55 + mNoise(p * 2.1 + 5.2) * 0.3 + mNoise(p * 4.3 + 1.7) * 0.15;
+  float a = smoothstep(0.62 - uDensity * 0.3, 0.86, n) * uDensity;
+  // nappes en paliers nets, comme peintes à la main
+  a = floor(a * 4.0 + 0.35) / 4.0 * 0.6;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(uColor, a);
+  #include <colorspace_fragment>
+}
+`;
+
 interface Bounds {
   x0: number;
   x1: number;
@@ -60,6 +101,10 @@ export interface WeatherUpdate {
   groundSpeed: number;
   hidden: boolean;
   quality: 'basse' | 'moyenne' | 'haute';
+  /** 0..1 : nappes de brume au ras du sol. */
+  mist: number;
+  /** Couleur de la brume (espace de travail linéaire). */
+  mistColor: THREE.Color;
 }
 
 export class WeatherFx {
@@ -83,9 +128,49 @@ export class WeatherFx {
   /** Éclair : appelé avec la position (lumière, son). */
   onLightning: ((x: number, z: number) => void) | null = null;
 
+  private mist: THREE.Mesh[] = [];
+  private mistAmount = 0;
+
   constructor(scene: THREE.Scene, private fx: FX) {
     this.group.renderOrder = 15;
     scene.add(this.group);
+    // deux nappes de brume (au sol et à hauteur d'homme) : parallaxe légère
+    for (let i = 0; i < 2; i++) {
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: MIST_VERT,
+        fragmentShader: MIST_FRAG,
+        uniforms: { uOffset: { value: new THREE.Vector2() }, uDensity: { value: 0 }, uColor: { value: new THREE.Color(0xdde4ea) }, uSeed: { value: i * 13.7 } },
+        transparent: true,
+        depthWrite: false,
+      });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(220, 220).rotateX(-Math.PI / 2), mat);
+      m.position.y = i === 0 ? 0.35 : 1.7;
+      m.renderOrder = 12;
+      m.frustumCulled = false;
+      m.visible = false;
+      scene.add(m);
+      this.mist.push(m);
+    }
+  }
+
+  private updateMist(u: WeatherUpdate): void {
+    this.mistAmount += (u.mist * (u.hidden ? 0 : 1) - this.mistAmount) * Math.min(1, u.dt * 0.8);
+    for (let i = 0; i < this.mist.length; i++) {
+      const m = this.mist[i];
+      const mat = m.material as THREE.ShaderMaterial;
+      const d = this.mistAmount * (i === 0 ? 1 : 0.7);
+      m.visible = d > 0.02;
+      if (!m.visible) continue;
+      m.position.x = Math.round(u.cx / 10) * 10;
+      m.position.z = Math.round(u.cz / 10) * 10;
+      const un = mat.uniforms;
+      un.uDensity.value = d;
+      un.uColor.value.copy(u.mistColor);
+      // la brume dérive avec le vent (et recule avec le décor quand le train roule)
+      const k = i === 0 ? 0.05 : 0.065;
+      un.uOffset.value.x += (u.windX * 0.25 - u.groundSpeed) * u.dt * k;
+      un.uOffset.value.y += u.windZ * 0.25 * u.dt * k;
+    }
   }
 
   private clear(): void {
@@ -160,7 +245,7 @@ export class WeatherFx {
       this.group.add(this.flakes);
     }
     if (kind === 'poussiere' || kind === 'blizzard') {
-      const n = Math.round((kind === 'poussiere' ? 260 : 220) * k);
+      const n = Math.round((kind === 'poussiere' ? 200 : 170) * k);
       this.streakPos = new Float32Array(n * 6);
       this.streakData = new Float32Array(n * 4);
       for (let i = 0; i < n; i++) {
@@ -170,7 +255,7 @@ export class WeatherFx {
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3).setUsage(THREE.DynamicDrawUsage));
-      const mat = new THREE.LineBasicMaterial({ color: kind === 'poussiere' ? 0xd8b884 : 0xe8f0f8, transparent: true, opacity: 0.4, depthWrite: false, fog: true });
+      const mat = new THREE.LineBasicMaterial({ color: kind === 'poussiere' ? 0xd8b884 : 0xe8f0f8, transparent: true, opacity: 0.3, depthWrite: false, fog: true });
       this.streaks = new THREE.LineSegments(geo, mat);
       this.streaks.frustumCulled = false;
       this.streaks.renderOrder = 15;
@@ -198,6 +283,7 @@ export class WeatherFx {
   }
 
   update(u: WeatherUpdate): void {
+    this.updateMist(u);
     if (u.kind !== this.kind || u.quality !== this.quality) {
       this.kind = u.kind;
       this.quality = u.quality;

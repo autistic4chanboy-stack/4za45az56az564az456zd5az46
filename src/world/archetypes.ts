@@ -138,12 +138,16 @@ export function biomeDressing(b: StationBuilder, ctx: GenCtx, density = 1): void
         const a = rng.next() * Math.PI * 2;
         const x = c.x + Math.cos(a) * rng.range(3.5, 6);
         const z = c.z + Math.sin(a) * rng.range(3.5, 6);
-        if (b.isFree({ x0: x - 0.8, z0: z - 0.8, x1: x + 0.8, z1: z + 0.8 }, 0.1)) P.bush(b.g, x, z, 0.7 + rng.next() * 0.6, bushC, !w && rng.chance(0.15) ? 0xc0303a : 0);
+        if (!b.isFree({ x0: x - 0.8, z0: z - 0.8, x1: x + 0.8, z1: z + 0.8 }, 0.1)) continue;
+        if (w) P.deadTree(b.g, x, z, 0.3 + rng.next() * 0.2, rng, 0x4a3a30);
+        else P.bush(b.g, x, z, 0.7 + rng.next() * 0.6, bushC, rng.chance(0.15) ? 0xc0303a : 0);
       }
     }
     b.scatter(reg, Math.round(area * bio.treeDensity * 1.4 * density), treeFn, 2.2);
     b.scatter(reg, Math.round(area * bio.rockDensity * 2.2 * density), (g, x, z) => P.rock(g, x, z, 0.4 + rng.next() * 1.2, rockC, rng, w), 2);
-    if (bio.id !== 'toundra') b.scatter(reg, Math.round(area * 2.2 * density), (g, x, z) => P.bush(g, x, z, 0.6 + rng.next() * 0.6, bushC, !w && rng.chance(0.12) ? 0xc0303a : 0), 1.6);
+    // buissons (en hiver : ramures nues qui dépassent de la neige)
+    if (w) b.scatter(reg, Math.round(area * 0.9 * density), (g, x, z) => { P.deadTree(g, x, z, 0.28 + rng.next() * 0.2, rng, 0x4a3a30); return null; }, 1.2);
+    else b.scatter(reg, Math.round(area * (bio.id === 'desert' ? 1.4 : 2.2) * density), (g, x, z) => P.bush(g, x, z, 0.6 + rng.next() * 0.6, bushC, rng.chance(0.12) ? 0xc0303a : 0), 1.6);
     b.scatter(reg, Math.round(area * 0.6 * density), (g, x, z) => {
       if (bio.id === 'desert') P.bones(g, x, z, rng);
       else P.stump(g, x, z, rng, w);
