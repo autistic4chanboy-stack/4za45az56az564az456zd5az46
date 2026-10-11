@@ -402,7 +402,6 @@ function energyTab(ui: UI, game: Game, rerender: () => void): HTMLElement {
   });
   right.append(temps);
   wrap.append(left, right);
-  void ui;
   return wrap;
 }
 
@@ -607,7 +606,6 @@ function journalTab(ui: UI, game: Game, rerender: () => void): HTMLElement {
   } else {
     for (const l of j.log.slice(0, 80)) body.append(h('div', { class: 'item small' }, h('span', { class: 'muted', style: 'width:96px' }, `J${Math.floor(l.time / 1440) + 1} ${formatTime(l.time)}`), h('span', { class: 'grow', style: l.kind === 'mauvais' ? 'color:#ffb0a2' : l.kind === 'bon' ? 'color:#b8f0b0' : l.kind === 'quete' ? 'color:var(--amber)' : '' }, l.text)));
   }
-  void ui;
   return h('div', null, sub, body);
 }
 
@@ -637,6 +635,5 @@ function characterTab(ui: UI, game: Game, rerender: () => void): HTMLElement {
   if (!p.perks.length) perks.append(h('div', { class: 'muted small' }, 'Aucun atout. Gagnez de l\'expérience (combats, quêtes, exploration) pour en obtenir.'));
   for (const id of p.perks) perks.append(h('div', { class: 'item' }, icon(PERKS[id].icon, 18, '#b083e8'), h('div', { class: 'grow' }, h('div', { class: 'name' }, PERKS[id].name), h('div', { class: 'sub' }, PERKS[id].desc))));
   wrap.append(perks);
-  void rerender;
   return wrap;
 }

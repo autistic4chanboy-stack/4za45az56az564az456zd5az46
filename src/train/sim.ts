@@ -216,26 +216,27 @@ export function powerStep(train: TrainState, dt: number, ctx: PowerContext): Pow
 
 // ------------------------------------------------------------------ température
 
-export function wagonTargetTemp(insulation: number, heaterOn: boolean, heaterHealth: number, ratio: number, ext: number, stoveHeat: number, isLoco: boolean): number {
+export function wagonTargetTemp(insulation: number, heaterOn: boolean, heaterHealth: number, ratio: number, ext: number, stoveHeat: number, isLoco: boolean, heatMult = 1): number {
   let target = ext;
   const h = heaterOn ? ratio * clamp01(heaterHealth / 100) : 0;
   if (ext < 20) {
-    target = ext + (BAL.heaterDelta * h + stoveHeat) * (0.6 + insulation * 0.5);
+    target = ext + (BAL.heaterDelta * h * heatMult + stoveHeat) * (0.6 + insulation * 0.5);
     target = Math.min(target, Math.max(ext, 23));
   } else if (ext > 24) {
     // ventilation : rafraîchit vers 21 °C
-    target = ext - (ext - 21) * h * 0.85;
+    target = ext - (ext - 21) * Math.min(1, h * 0.85 * heatMult);
   }
   if (isLoco) target += 14;
   return target;
 }
 
 export function temperatureStep(state: GameState, dt: number, ext: number, heatRatio: number): void {
+  const heatMult = 1 + 0.15 * (state.train.upgrades.isolation ?? 0);
   for (const w of state.train.wagons) {
     const def = WAGON_TYPES[w.type];
     let stove = 0;
     for (const d of w.decor) if (d && DECOR[d].heat) stove += DECOR[d].heat!;
-    const target = def.insulation <= 0 ? ext : wagonTargetTemp(def.insulation, w.heater.on, w.heater.hp, heatRatio, ext, stove, w.type === 'locomotive');
+    const target = def.insulation <= 0 ? ext : wagonTargetTemp(def.insulation, w.heater.on, w.heater.hp, heatRatio, ext, stove, w.type === 'locomotive', heatMult);
     const k = BAL.tempApproach * (def.insulation > 0 ? 1.4 - def.insulation * 0.6 : 3);
     w.temp += (target - w.temp) * (1 - Math.exp(-k * dt));
   }

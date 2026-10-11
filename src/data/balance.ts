@@ -55,7 +55,7 @@ export const BAL = {
   // --------------------------------------------------------------- énergie
   batteryChargeRate: 6,
   batteryDischargeRate: 8,
-  heaterDelta: 28,
+  heaterDelta: 34,
   tempApproach: 0.025,
 
   // --------------------------------------------------------------- joueur
@@ -86,7 +86,7 @@ export const BAL = {
 
   // --------------------------------------------------------------- PNJ
   /** Vivres consommés par personne et par heure de jeu (60 s). */
-  foodPerHour: 1 / 14,
+  foodPerHour: 1 / 11,
   /** Moral perdu par heure sans manger. */
   hungerMorale: 6,
   coldMoraleThreshold: 12,

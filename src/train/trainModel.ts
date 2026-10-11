@@ -294,8 +294,7 @@ function decorAnchorsFor(def: WagonTypeDef): { x: number; z: number; ry: number 
   return out;
 }
 
-export function buildWagonModel(w: WagonState, frontX: number): WagonModel {
-  void frontX;
+export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
   const def = WAGON_TYPES[w.type];
   const L = def.length;
   const g = new GeoBuilder();

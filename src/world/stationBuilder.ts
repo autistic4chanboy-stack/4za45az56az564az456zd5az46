@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GeoBuilder } from '../render/geo';
 import { CollisionWorld } from './collision';
 import { Rng } from '../core/rng';
-import { rectsOverlap, type Rect } from '../core/math';
+import { rectContains, rectsOverlap, type Rect } from '../core/math';
 import { rollLoot, type LootEntry, type LootProfile } from './loot';
 import * as P from '../render/props';
 import type { PropCollider } from '../render/props';
@@ -632,10 +632,14 @@ export class StationBuilder {
       const r = this.rng.next() * spread;
       let x = cx + Math.cos(a) * r;
       let z = cz + Math.sin(a) * r;
-      for (let k = 0; k < 8 && this.colliders.blocked(x, z, 0.8); k++) {
-        x = cx + this.rng.range(-spread, spread);
-        z = cz + this.rng.range(-spread, spread);
+      // cherche une place libre en élargissant progressivement la zone ; sinon l'ennemi n'est pas placé
+      let k = 0;
+      for (; k < 24 && this.colliders.blocked(x, z, 0.8); k++) {
+        const s = spread + k * 0.6;
+        x = cx + this.rng.range(-s, s);
+        z = cz + this.rng.range(-s, s);
       }
+      if (k >= 24 && this.colliders.blocked(x, z, 0.8)) continue;
       this.enemies.push({ id: this.nextId('en'), type: t, x, z, group: gid });
     }
   }
@@ -844,6 +848,25 @@ export class StationBuilder {
   /** Assemble la géométrie statique. */
   finalize(): void {
     if (!this.g.isEmpty) this.root.add(this.g.toGroup());
+    // des décors ont pu être posés après les ennemis : on dégage ceux qui se retrouvent emmurés
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (!this.colliders.blocked(e.x, e.z, 0.6)) continue;
+      let placed = false;
+      for (let ring = 1; ring <= 8 && !placed; ring++) {
+        for (let k = 0; k < 8 && !placed; k++) {
+          const a = (k / 8) * Math.PI * 2 + ring;
+          const x = e.x + Math.cos(a) * ring * 1.2;
+          const z = e.z + Math.sin(a) * ring * 1.2;
+          if (!this.colliders.blocked(x, z, 0.6) && rectContains(this.bounds, x, z)) {
+            e.x = x;
+            e.z = z;
+            placed = true;
+          }
+        }
+      }
+      if (!placed) this.enemies.splice(i, 1);
+    }
   }
 }
 

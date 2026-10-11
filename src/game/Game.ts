@@ -726,7 +726,7 @@ export class Game implements CombatHost {
     let px = x;
     let pz = z;
     if (lv && lv.collidersActive && !(who.flying)) {
-      const res = lv.colliders.resolve(px, pz, r, (c) => (who === this.player ? false : c.tag === 'water' && false));
+      const res = lv.colliders.resolve(px, pz, r);
       px = res.x;
       pz = res.z;
     }

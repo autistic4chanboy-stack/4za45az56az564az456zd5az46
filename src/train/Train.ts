@@ -359,11 +359,9 @@ export class Train {
       const comps: { hp: number }[] = [st.heater, st.lights, ...st.slots.filter((s) => s.equip)];
       const c = comps[Math.floor(Math.random() * comps.length)];
       if (c) {
-        const maxC = 'equip' in c && (c as SlotState).equip ? EQUIPMENT[(c as SlotState).equip!].hp : 100;
         const before = c.hp;
         c.hp = Math.max(0, c.hp - dmg * (0.6 + Math.random()));
         if (before > 0 && c.hp <= 0) this.game.onComponentBroken(w, c === st.heater ? 'chauffage' : c === st.lights ? 'éclairage' : EQUIPMENT[(c as SlotState).equip!].name);
-        void maxC;
       }
     }
     // incendie

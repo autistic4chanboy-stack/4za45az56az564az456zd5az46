@@ -485,7 +485,6 @@ export class Story {
   // ------------------------------------------------------------------ génération des gares scénarisées
 
   decorateStation(lv: StationLevel, b: StationBuilder, ctx: GenCtx): void {
-    const g = this.game;
     const node = lv.node;
     if (!this.active) {
       this.decorateGeneric(lv, b, ctx);
@@ -604,7 +603,6 @@ export class Story {
         this.decoratePolaris(lv, b, ctx);
         break;
     }
-    void g;
   }
 
   private decoratePolaris(_lv: StationLevel, b: StationBuilder, ctx: GenCtx): void {

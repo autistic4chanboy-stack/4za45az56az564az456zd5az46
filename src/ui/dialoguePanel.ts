@@ -9,7 +9,6 @@ import type { Game } from '../game/Game';
 import type { UI } from './UI';
 import type { NpcActor } from '../game/npcActor';
 import type { DialogueNode, DialogueTree } from '../story/dialogue';
-import type { NpcState } from '../state/types';
 
 interface Opt {
   text: string;
@@ -274,5 +273,4 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
 
   if (tree) runTree(tree, 'start');
   else generic();
-  void (null as unknown as NpcState);
 }

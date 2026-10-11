@@ -1,5 +1,5 @@
 import { BAL, DIFFICULTIES } from '../data/balance';
-import { PERSONALITIES, SKILLS, INTERRO, RUMORS, BARKS, type JobId, type SkillId } from '../data/npcs';
+import { PERSONALITIES, SKILLS, INTERRO, RUMORS, type JobId, type SkillId } from '../data/npcs';
 import { DECOR, WAGON_TYPES, EQUIPMENT } from '../data/train';
 import { RESOURCES, type ResourceId } from '../data/items';
 import { clamp } from '../core/math';
@@ -771,6 +771,5 @@ export class CrewSystem {
         this.dismiss(n);
       }
     }
-    void BARKS;
   }
 }

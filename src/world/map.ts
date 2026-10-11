@@ -111,7 +111,7 @@ function makeInfiniteNode(rng: Rng, id: string, layer: number, slot: number, bio
   else if (forceSafe) arch = rng.pickWeighted(SAFE_ARCHETYPES, (a) => archetypeWeight(a, biome, layer));
   else arch = rng.pickWeighted(ARCHETYPE_IDS, (a) => archetypeWeight(a, biome, layer));
   const def = ARCHETYPES[arch];
-  const hostility = layer === 0 ? 'sure' : boss ? 'hostile' : pickHostility(rng, arch);
+  const hostility = layer === 0 || forceSafe ? 'sure' : boss ? 'hostile' : pickHostility(rng, arch);
   const threat = threatForLayer(layer);
   return {
     id,

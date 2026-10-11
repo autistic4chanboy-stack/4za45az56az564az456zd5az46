@@ -221,6 +221,10 @@ export const LOCO_UPGRADES: Record<string, UpgradeDef> = {
     id: 'blindage', name: 'Blindage de la locomotive', desc: '+15 % de PV et +6 % d\'armure par niveau.', max: 3,
     cost: (l) => ({ jetons: 90 * l, ferraille: 80 * l }),
   },
+  isolation: {
+    id: 'isolation', name: 'Calorifugeage des voitures', desc: '+15 % d\'efficacité du chauffage (et de la ventilation) dans tous les wagons, par niveau.', max: 3,
+    cost: (l) => ({ jetons: 80 * l, ferraille: 40 * l }),
+  },
 };
 
 /** Coût du blindage supplémentaire d'un wagon (niveau 1..3). */

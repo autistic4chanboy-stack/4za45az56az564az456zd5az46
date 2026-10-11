@@ -21,7 +21,7 @@ const res = (id: ResourceId, min: number, max: number, scale = 0.25): Row['make'
 const TABLES: Record<LootProfile, Row[]> = {
   general: [
     { w: 3, make: res('ferraille', 3, 9) },
-    { w: 2.5, make: res('nourriture', 2, 6) },
+    { w: 2.5, make: res('nourriture', 2, 4) },
     { w: 2.2, make: res('balles', 6, 18) },
     { w: 1.2, make: res('jetons', 5, 18) },
     { w: 0.8, make: res('medicaments', 1, 2, 0.1) },
@@ -32,7 +32,7 @@ const TABLES: Record<LootProfile, Row[]> = {
     { w: 0.25, make: res('dynamite', 1, 2, 0) },
   ],
   maison: [
-    { w: 3, make: res('nourriture', 2, 5) },
+    { w: 3, make: res('nourriture', 1, 4) },
     { w: 1.5, make: res('jetons', 3, 12) },
     { w: 1.5, make: res('ferraille', 2, 5) },
     { w: 0.8, make: res('medicaments', 1, 1, 0.1) },
@@ -67,7 +67,7 @@ const TABLES: Record<LootProfile, Row[]> = {
     { w: 0.25, make: (rng) => ({ kind: 'item', id: rng.pick(['fusible', 'piece_moteur']), qty: 1 }) },
   ],
   nourriture: [
-    { w: 4, make: res('nourriture', 4, 10) },
+    { w: 4, make: res('nourriture', 3, 6) },
     { w: 1, make: res('jetons', 3, 10) },
     { w: 0.6, make: (rng) => ({ kind: 'item', id: 'graines', qty: rng.int(1, 2) }) },
   ],
@@ -88,7 +88,7 @@ const TABLES: Record<LootProfile, Row[]> = {
   bandit: [
     { w: 2.5, make: res('jetons', 8, 25) },
     { w: 2, make: res('balles', 10, 24) },
-    { w: 1.4, make: res('nourriture', 2, 6) },
+    { w: 1.4, make: res('nourriture', 2, 4) },
     { w: 1, make: res('cartouches', 3, 8) },
     { w: 0.7, make: res('dynamite', 1, 2, 0) },
     { w: 0.6, make: res('medicaments', 1, 2, 0.1) },

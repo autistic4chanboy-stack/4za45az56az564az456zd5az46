@@ -1,4 +1,4 @@
-import { h, btn, clear } from './dom';
+import { h, btn } from './dom';
 import type { Game } from '../game/Game';
 import type { UI } from './UI';
 
@@ -386,5 +386,4 @@ export function openArcade(ui: UI, game: Game): void {
     },
   });
   raf = requestAnimationFrame(loop);
-  void clear;
 }
