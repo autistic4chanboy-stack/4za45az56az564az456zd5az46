@@ -1,0 +1,256 @@
+import type { GeoBuilder } from './geo';
+import type { Rng } from '../core/rng';
+
+/** Décors procéduraux ajoutés à un GeoBuilder. Chaque fonction retourne un collisionneur éventuel. */
+
+export type PropCollider = { kind: 'circle'; x: number; z: number; r: number } | { kind: 'rect'; x0: number; z0: number; x1: number; z1: number } | null;
+
+const SNOW = 0xf0f4f7;
+
+export function pine(g: GeoBuilder, x: number, z: number, s: number, snow: boolean, dark = false): PropCollider {
+  const trunk = 0x4a3426;
+  const leaf = dark ? 0x23402a : 0x2f5530;
+  g.cyl(0.18 * s, 0.24 * s, 1.4 * s, x, 0.7 * s, z, trunk, { seg: 6 });
+  for (let i = 0; i < 3; i++) {
+    const y = (1.4 + i * 1.15) * s;
+    const r = (1.6 - i * 0.42) * s;
+    g.cone(r, 1.9 * s, x, y + 0.6 * s, z, leaf, { seg: 7, vary: 0.08, ry: i });
+    if (snow) g.cone(r * 0.75, 0.7 * s, x, y + 1.25 * s, z, SNOW, { seg: 7, ry: i });
+  }
+  return { kind: 'circle', x, z, r: 0.35 * s };
+}
+
+export function oak(g: GeoBuilder, x: number, z: number, s: number, snow: boolean, autumn = false): PropCollider {
+  g.cyl(0.25 * s, 0.35 * s, 2.2 * s, x, 1.1 * s, z, 0x5a4030, { seg: 6 });
+  const leaf = autumn ? 0x9a7a2a : 0x4f6e2e;
+  g.dodeca(1.5 * s, x, 3.0 * s, z, leaf, { vary: 0.1 });
+  g.dodeca(1.0 * s, x + 0.9 * s, 2.6 * s, z + 0.3 * s, leaf, { vary: 0.1 });
+  g.dodeca(1.1 * s, x - 0.8 * s, 2.7 * s, z - 0.4 * s, leaf, { vary: 0.1 });
+  if (snow) g.dodeca(1.2 * s, x, 3.6 * s, z, SNOW, { sy: 0.4 });
+  return { kind: 'circle', x, z, r: 0.45 * s };
+}
+
+export function birch(g: GeoBuilder, x: number, z: number, s: number, snow: boolean): PropCollider {
+  g.cyl(0.12 * s, 0.16 * s, 3.4 * s, x, 1.7 * s, z, 0xe0ddd0, { seg: 6 });
+  g.box(0.2 * s, 0.08 * s, 0.2 * s, x, 1.2 * s, z, 0x2a2a2a);
+  g.box(0.2 * s, 0.08 * s, 0.2 * s, x, 2.2 * s, z, 0x2a2a2a);
+  g.dodeca(1.0 * s, x, 3.6 * s, z, snow ? 0xc8d0b0 : 0x8aa04a, { vary: 0.1, sy: 1.3 });
+  return { kind: 'circle', x, z, r: 0.25 * s };
+}
+
+export function deadTree(g: GeoBuilder, x: number, z: number, s: number, rng: Rng, color = 0x3e342c): PropCollider {
+  g.cyl(0.14 * s, 0.26 * s, 3.2 * s, x, 1.6 * s, z, color, { seg: 5 });
+  for (let i = 0; i < 3; i++) {
+    const a = rng.next() * Math.PI * 2;
+    const y = (1.6 + i * 0.6) * s;
+    g.cyl(0.05 * s, 0.09 * s, 1.4 * s, x + Math.cos(a) * 0.5 * s, y + 0.4 * s, z + Math.sin(a) * 0.5 * s, color, { seg: 4, rz: Math.cos(a) * 0.9, rx: -Math.sin(a) * 0.9 });
+  }
+  return { kind: 'circle', x, z, r: 0.3 * s };
+}
+
+export function cactus(g: GeoBuilder, x: number, z: number, s: number): PropCollider {
+  const c = 0x4f7a3a;
+  g.cyl(0.28 * s, 0.32 * s, 2.6 * s, x, 1.3 * s, z, c, { seg: 7 });
+  g.cyl(0.18 * s, 0.18 * s, 0.9 * s, x + 0.5 * s, 1.4 * s, z, c, { seg: 6, rz: Math.PI / 2 });
+  g.cyl(0.18 * s, 0.18 * s, 1.0 * s, x + 0.9 * s, 1.95 * s, z, c, { seg: 6 });
+  g.cyl(0.16 * s, 0.16 * s, 0.7 * s, x - 0.4 * s, 1.0 * s, z, c, { seg: 6, rz: Math.PI / 2 });
+  g.cyl(0.16 * s, 0.16 * s, 0.8 * s, x - 0.7 * s, 1.4 * s, z, c, { seg: 6 });
+  return { kind: 'circle', x, z, r: 0.4 * s };
+}
+
+export function mangrove(g: GeoBuilder, x: number, z: number, s: number, rng: Rng): PropCollider {
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + rng.next();
+    g.cyl(0.06 * s, 0.1 * s, 1.6 * s, x + Math.cos(a) * 0.5 * s, 0.6 * s, z + Math.sin(a) * 0.5 * s, 0x3a3020, { seg: 4, rz: Math.cos(a) * 0.5, rx: -Math.sin(a) * 0.5 });
+  }
+  g.cyl(0.2 * s, 0.25 * s, 2.2 * s, x, 2.2 * s, z, 0x3a3020, { seg: 5 });
+  g.dodeca(1.4 * s, x, 3.6 * s, z, 0x3d5a2a, { vary: 0.12, sy: 0.6 });
+  g.dodeca(0.9 * s, x + 0.8 * s, 3.2 * s, z, 0x4a6a32, { vary: 0.12, sy: 0.6 });
+  return { kind: 'circle', x, z, r: 0.5 * s };
+}
+
+export function mushroom(g: GeoBuilder, x: number, z: number, s: number, glow: number): PropCollider {
+  g.cyl(0.25 * s, 0.35 * s, 2.0 * s, x, 1.0 * s, z, 0xd8d0b8, { seg: 7 });
+  g.sphere(1.3 * s, x, 2.2 * s, z, 0x8a5a7a, { detail: 1, sy: 0.45 });
+  g.layer('glow');
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.26;
+    g.sphere(0.12 * s, x + Math.cos(a) * 0.8 * s, 2.45 * s, z + Math.sin(a) * 0.8 * s, glow, { detail: 0 });
+  }
+  g.layer('base');
+  return { kind: 'circle', x, z, r: 0.4 * s };
+}
+
+export function crystal(g: GeoBuilder, x: number, z: number, s: number, rng: Rng, color = 0x7dff3a): PropCollider {
+  g.layer('glow');
+  for (let i = 0; i < 4; i++) {
+    const a = rng.next() * Math.PI * 2;
+    g.cone(0.25 * s, (1.2 + rng.next() * 1.4) * s, x + Math.cos(a) * 0.3 * s, 0.6 * s, z + Math.sin(a) * 0.3 * s, color, { seg: 5, rz: Math.cos(a) * 0.3, rx: Math.sin(a) * 0.3 });
+  }
+  g.layer('base');
+  g.dodeca(0.6 * s, x, 0.2 * s, z, 0x4a4a42);
+  return { kind: 'circle', x, z, r: 0.5 * s };
+}
+
+export function rock(g: GeoBuilder, x: number, z: number, s: number, color: number, rng: Rng, snow = false): PropCollider {
+  g.dodeca(s, x, s * 0.45, z, color, { vary: 0.12, sy: 0.6 + rng.next() * 0.4, ry: rng.next() * 6, rx: rng.next() * 0.4 });
+  if (snow) g.dodeca(s * 0.8, x, s * 0.75, z, SNOW, { sy: 0.3 });
+  return s > 0.6 ? { kind: 'circle', x, z, r: s * 0.85 } : null;
+}
+
+export function bush(g: GeoBuilder, x: number, z: number, s: number, color: number): PropCollider {
+  g.dodeca(0.7 * s, x, 0.45 * s, z, color, { vary: 0.15, sy: 0.7 });
+  g.dodeca(0.5 * s, x + 0.5 * s, 0.35 * s, z + 0.2 * s, color, { vary: 0.15, sy: 0.7 });
+  return null;
+}
+
+export function grass(g: GeoBuilder, x: number, z: number, s: number, color: number): void {
+  for (let i = 0; i < 3; i++) g.cone(0.08 * s, 0.6 * s, x + (i - 1) * 0.12 * s, 0.3 * s, z + ((i * 7) % 3 - 1) * 0.1 * s, color, { seg: 3, rz: (i - 1) * 0.3 });
+}
+
+export function barrel(g: GeoBuilder, x: number, z: number, color: number, toxic = false, glow = 0x7dff3a): PropCollider {
+  g.cyl(0.38, 0.38, 1.1, x, 0.55, z, color, { seg: 9 });
+  g.cyl(0.4, 0.4, 0.06, x, 0.3, z, 0x3a3a3a, { seg: 9 });
+  g.cyl(0.4, 0.4, 0.06, x, 0.85, z, 0x3a3a3a, { seg: 9 });
+  if (toxic) {
+    g.layer('glow').cyl(0.32, 0.32, 0.03, x, 1.11, z, glow, { seg: 9 });
+    g.layer('base');
+  }
+  return { kind: 'circle', x, z, r: 0.42 };
+}
+
+export function crate(g: GeoBuilder, x: number, z: number, s: number, color = 0x8a6a42, ry = 0): PropCollider {
+  g.box(s, s, s, x, s / 2, z, color, { ry, vary: 0.08 });
+  g.box(s * 1.02, s * 0.12, s * 1.02, x, s * 0.85, z, 0x5a4428, { ry });
+  g.box(s * 1.02, s * 0.12, s * 1.02, x, s * 0.15, z, 0x5a4428, { ry });
+  return { kind: 'rect', x0: x - s * 0.55, z0: z - s * 0.55, x1: x + s * 0.55, z1: z + s * 0.55 };
+}
+
+export function car(g: GeoBuilder, x: number, z: number, ry: number, color: number, rusty = true): PropCollider {
+  const c = rusty ? 0x7a4a2a : color;
+  g.box(1.8, 0.7, 4.2, x, 0.65, z, color, { ry, vary: 0.05 });
+  g.box(1.6, 0.6, 2.2, x - Math.sin(ry) * 0.2, 1.3, z - Math.cos(ry) * 0.2, c, { ry });
+  g.box(1.5, 0.45, 2.0, x - Math.sin(ry) * 0.2, 1.3, z - Math.cos(ry) * 0.2, 0x2a3036, { ry });
+  for (const [dx, dz] of [[-0.85, 1.4], [0.85, 1.4], [-0.85, -1.4], [0.85, -1.4]]) {
+    const wx = x + Math.cos(ry) * dx + Math.sin(ry) * dz;
+    const wz = z - Math.sin(ry) * dx + Math.cos(ry) * dz;
+    g.cyl(0.36, 0.36, 0.25, wx, 0.36, wz, 0x1a1a1a, { rz: Math.PI / 2, ry, seg: 8 });
+  }
+  const hw = Math.abs(Math.cos(ry)) * 0.95 + Math.abs(Math.sin(ry)) * 2.1;
+  const hd = Math.abs(Math.sin(ry)) * 0.95 + Math.abs(Math.cos(ry)) * 2.1;
+  return { kind: 'rect', x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd };
+}
+
+export function pole(g: GeoBuilder, x: number, z: number, h = 6): PropCollider {
+  g.cyl(0.12, 0.16, h, x, h / 2, z, 0x4a3a2c, { seg: 6 });
+  g.box(1.6, 0.12, 0.12, x, h - 0.5, z, 0x4a3a2c);
+  g.box(0.08, 0.15, 0.08, x - 0.6, h - 0.35, z, 0x9ab0b8);
+  g.box(0.08, 0.15, 0.08, x + 0.6, h - 0.35, z, 0x9ab0b8);
+  return { kind: 'circle', x, z, r: 0.2 };
+}
+
+export function lampPost(g: GeoBuilder, x: number, z: number, lit: boolean): PropCollider {
+  g.cyl(0.1, 0.14, 4.2, x, 2.1, z, 0x2a2e32, { seg: 6 });
+  g.box(0.9, 0.1, 0.12, x + 0.35, 4.15, z, 0x2a2e32);
+  if (lit) g.layer('glow');
+  g.box(0.36, 0.2, 0.36, x + 0.75, 4.0, z, lit ? 0xffe2a0 : 0x5a5a50);
+  g.layer('base');
+  return { kind: 'circle', x, z, r: 0.2 };
+}
+
+export function fence(g: GeoBuilder, x0: number, z0: number, x1: number, z1: number, color = 0x6a5440): PropCollider {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const ry = Math.atan2(x1 - x0, z1 - z0);
+  const n = Math.max(1, Math.round(len / 2));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    g.box(0.12, 1.2, 0.12, x0 + (x1 - x0) * t, 0.6, z0 + (z1 - z0) * t, color);
+  }
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  g.box(0.06, 0.1, len, cx, 0.9, cz, color, { ry });
+  g.box(0.06, 0.1, len, cx, 0.45, cz, color, { ry });
+  return { kind: 'rect', x0: Math.min(x0, x1) - 0.1, z0: Math.min(z0, z1) - 0.1, x1: Math.max(x0, x1) + 0.1, z1: Math.max(z0, z1) + 0.1 };
+}
+
+export function sandbags(g: GeoBuilder, x: number, z: number, ry: number, len = 3): PropCollider {
+  const n = Math.round(len / 0.6);
+  for (let row = 0; row < 3; row++) {
+    for (let i = 0; i < n - row; i++) {
+      const off = (i - (n - row - 1) / 2) * 0.6;
+      g.box(0.58, 0.28, 0.45, x + Math.cos(ry) * off, 0.14 + row * 0.27, z - Math.sin(ry) * off, 0xa0905e, { ry, vary: 0.06 });
+    }
+  }
+  const hw = Math.abs(Math.cos(ry)) * len / 2 + 0.3;
+  const hd = Math.abs(Math.sin(ry)) * len / 2 + 0.3;
+  return { kind: 'rect', x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd };
+}
+
+export function tent(g: GeoBuilder, x: number, z: number, ry: number, color: number): PropCollider {
+  g.box(3.2, 0.06, 3.4, x, 0.03, z, 0x4a4030, { ry });
+  g.cyl(0, 2.4, 2.6, x, 1.3, z, color, { seg: 4, ry: ry + Math.PI / 4, vary: 0.05 });
+  return { kind: 'circle', x, z, r: 1.5 };
+}
+
+export function tank(g: GeoBuilder, x: number, z: number, r: number, h: number, color: number): PropCollider {
+  g.cyl(r, r, h, x, h / 2, z, color, { seg: 12, grad: 0.2 });
+  g.cyl(r * 0.6, r, 0.6, x, h + 0.3, z, color, { seg: 12 });
+  g.box(0.08, h, 0.08, x + r, h / 2, z, 0x5a5a5a);
+  return { kind: 'circle', x, z, r: r + 0.1 };
+}
+
+export function pipe(g: GeoBuilder, x0: number, z0: number, x1: number, z1: number, y: number, r: number, color: number): void {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const ry = Math.atan2(x1 - x0, z1 - z0);
+  g.cyl(r, r, len, (x0 + x1) / 2, y, (z0 + z1) / 2, color, { rx: Math.PI / 2, ry, seg: 8 });
+}
+
+export function puddle(g: GeoBuilder, x: number, z: number, r: number, color: number, glow: boolean): void {
+  if (glow) g.layer('glow');
+  g.cyl(r, r, 0.04, x, 0.03, z, color, { seg: 9 });
+  g.layer('base');
+}
+
+export function ruinWall(g: GeoBuilder, x: number, z: number, w: number, h: number, ry: number, color: number, rng: Rng): PropCollider {
+  const n = Math.max(2, Math.round(w / 1.2));
+  for (let i = 0; i < n; i++) {
+    const off = (i - (n - 1) / 2) * (w / n);
+    const hh = h * (0.4 + rng.next() * 0.6);
+    g.box(w / n + 0.02, hh, 0.4, x + Math.cos(ry) * off, hh / 2, z - Math.sin(ry) * off, color, { ry, vary: 0.06 });
+  }
+  const hw = Math.abs(Math.cos(ry)) * w / 2 + Math.abs(Math.sin(ry)) * 0.25;
+  const hd = Math.abs(Math.sin(ry)) * w / 2 + Math.abs(Math.cos(ry)) * 0.25;
+  return { kind: 'rect', x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd };
+}
+
+export function tire(g: GeoBuilder, x: number, z: number): void {
+  g.cyl(0.45, 0.45, 0.3, x, 0.15, z, 0x1a1a1a, { seg: 9 });
+}
+
+export function bones(g: GeoBuilder, x: number, z: number, rng: Rng): void {
+  for (let i = 0; i < 4; i++) g.box(0.08, 0.06, 0.5, x + rng.range(-0.5, 0.5), 0.04, z + rng.range(-0.5, 0.5), 0xd8d0c0, { ry: rng.next() * 3 });
+  g.sphere(0.15, x, 0.12, z, 0xd8d0c0);
+}
+
+export function haybale(g: GeoBuilder, x: number, z: number, ry: number): PropCollider {
+  g.cyl(0.7, 0.7, 1.2, x, 0.7, z, 0xc9a85a, { rz: Math.PI / 2, ry, seg: 10, vary: 0.05 });
+  return { kind: 'circle', x, z, r: 0.75 };
+}
+
+export function signpost(g: GeoBuilder, x: number, z: number, color = 0xb0302a): PropCollider {
+  g.cyl(0.08, 0.08, 2.4, x, 1.2, z, 0x4a3a2c, { seg: 5 });
+  g.box(1.2, 0.5, 0.06, x, 2.1, z, color);
+  return { kind: 'circle', x, z, r: 0.15 };
+}
+
+export function campfire(g: GeoBuilder, x: number, z: number): PropCollider {
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    g.dodeca(0.2, x + Math.cos(a) * 0.55, 0.12, z + Math.sin(a) * 0.55, 0x5a5a58);
+  }
+  g.box(0.12, 0.12, 0.9, x, 0.12, z, 0x3a2a1a, { ry: 0.6 });
+  g.box(0.12, 0.12, 0.9, x, 0.14, z, 0x3a2a1a, { ry: -0.6 });
+  g.layer('glow').cone(0.3, 0.6, x, 0.4, z, 0xff9a30, { seg: 5 });
+  g.layer('base');
+  return { kind: 'circle', x, z, r: 0.6 };
+}

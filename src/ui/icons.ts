@@ -1,0 +1,108 @@
+/** Jeu d'icônes SVG minimalistes (24×24, currentColor). */
+const P: Record<string, string> = {
+  coal: '<path d="M4 15l3-6 5-2 6 3 2 6-4 4H8z" fill="currentColor"/><path d="M9 11l3 1 2-2" stroke="#000" stroke-opacity=".35" fill="none" stroke-width="1.2"/>',
+  scrap: '<path fill="currentColor" d="M12 3l1.6 2.4 2.8-.8.4 2.9 2.7 1.1-1.2 2.6 1.9 2.2-2.5 1.6.2 2.9-2.9.1-1.2 2.6-2.4-1.6-2.4 1.6-1.2-2.6-2.9-.1.2-2.9-2.5-1.6 1.9-2.2L4.5 9.6l2.7-1.1.4-2.9 2.8.8z"/><circle cx="12" cy="12" r="3" fill="#000" fill-opacity=".45"/>',
+  food: '<rect x="6" y="4" width="12" height="16" rx="2" fill="currentColor"/><rect x="6" y="9" width="12" height="5" fill="#000" fill-opacity=".3"/><path d="M8 4h8" stroke="#fff" stroke-opacity=".5"/>',
+  meds: '<rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor"/><path d="M12 8v8M8 12h8" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>',
+  bullet: '<path fill="currentColor" d="M10 10c0-4 2-7 2-7s2 3 2 7v10h-4z"/><rect x="9.5" y="17" width="5" height="4" rx="1" fill="currentColor" fill-opacity=".7"/>',
+  shell: '<rect x="8" y="3" width="8" height="13" rx="1.5" fill="currentColor"/><rect x="7" y="15" width="10" height="6" rx="1" fill="#c9a24a"/>',
+  cannonball: '<path fill="currentColor" d="M9 21V10c0-4 3-7 3-7s3 3 3 7v11z"/><rect x="8" y="17" width="8" height="2" fill="#000" fill-opacity=".35"/>',
+  cell: '<rect x="6" y="5" width="12" height="16" rx="2" fill="currentColor"/><rect x="10" y="2.5" width="4" height="3" fill="currentColor"/><path d="M13 8l-3 5h3l-2 5" stroke="#000" stroke-opacity=".5" fill="none" stroke-width="1.5"/>',
+  token: '<circle cx="12" cy="12" r="9" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#000" stroke-opacity=".3"/><path d="M13.5 8v6a2 2 0 0 1-4 0" stroke="#000" stroke-opacity=".55" fill="none" stroke-width="1.8"/>',
+  filter: '<circle cx="12" cy="12" r="8" fill="currentColor"/><circle cx="12" cy="12" r="4" fill="none" stroke="#000" stroke-opacity=".4" stroke-width="2"/>',
+  medkit: '<rect x="3" y="7" width="18" height="13" rx="2" fill="currentColor"/><path d="M9 7V5h6v2" stroke="currentColor" fill="none" stroke-width="2"/><path d="M12 10v7M8.5 13.5h7" stroke="#fff" stroke-width="2.4"/>',
+  pill: '<rect x="4" y="9" width="16" height="7" rx="3.5" fill="currentColor" transform="rotate(-35 12 12.5)"/><path d="M12 7.5l-.1 10" stroke="#000" stroke-opacity=".35" transform="rotate(-35 12 12.5)"/>',
+  dynamite: '<rect x="7" y="8" width="10" height="13" rx="1.5" fill="currentColor"/><path d="M12 8c0-3 3-3 4-5" stroke="#c9a24a" fill="none" stroke-width="1.6"/><circle cx="16.5" cy="3" r="1.5" fill="#ffd060"/>',
+  lockpick: '<path d="M4 20l9-9" stroke="currentColor" stroke-width="2.2"/><path d="M13 11l3-1 1-3 3 1-2 3-3 1z" fill="currentColor"/>',
+  heart: '<path fill="currentColor" d="M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 6-8 11-8 11z"/>',
+  run: '<circle cx="14" cy="4.5" r="2.2" fill="currentColor"/><path d="M8 21l3-6 3 2v4M6 12l4-4h4l2 4 3 1M11 15l-1-5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  thermo: '<path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="17" r="2.2" fill="currentColor"/><path d="M12 15V8" stroke="currentColor" stroke-width="2"/>',
+  radiation: '<circle cx="12" cy="12" r="2" fill="currentColor"/><path fill="currentColor" d="M12 9.5L8.4 3.5A9 9 0 0 1 15.6 3.5zM14.2 13.2l6.8.2a9 9 0 0 1-3.6 6.3zM9.8 13.2l-3.2 6.5A9 9 0 0 1 3 13.4z"/>',
+  gas: '<path fill="currentColor" d="M6 9c0-3 3-5 6-5s6 2 6 5v4c0 4-3 7-6 7s-6-3-6-7z"/><circle cx="9.5" cy="10.5" r="1.8" fill="#000" fill-opacity=".5"/><circle cx="14.5" cy="10.5" r="1.8" fill="#000" fill-opacity=".5"/><rect x="10" y="14" width="4" height="4" rx="1" fill="#000" fill-opacity=".4"/>',
+  bolt: '<path fill="currentColor" d="M13 2L5 14h6l-1 8 8-12h-6z"/>',
+  shield: '<path fill="currentColor" d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/>',
+  light: '<path fill="currentColor" d="M12 2a7 7 0 0 1 4 12.7V17H8v-2.3A7 7 0 0 1 12 2z"/><rect x="9" y="18" width="6" height="2" fill="currentColor"/><rect x="10" y="21" width="4" height="1.5" fill="currentColor"/>',
+  fire: '<path fill="currentColor" d="M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 2-5 3-6 0 2 1 3 2 3 0-3-1-6 1-9z"/>',
+  snow: '<path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  skull: '<path fill="currentColor" d="M12 2c5 0 8 3.5 8 8 0 3-1.5 4.5-3 5.5V20h-3v-2h-1v2h-2v-2h-1v2H7v-4.5C5.5 14.5 4 13 4 10c0-4.5 3-8 8-8z"/><circle cx="9" cy="10.5" r="2" fill="#000" fill-opacity=".6"/><circle cx="15" cy="10.5" r="2" fill="#000" fill-opacity=".6"/>',
+  train: '<rect x="4" y="5" width="16" height="12" rx="2" fill="currentColor"/><rect x="6.5" y="7.5" width="4.5" height="4" fill="#000" fill-opacity=".45"/><rect x="13" y="7.5" width="4.5" height="4" fill="#000" fill-opacity=".45"/><circle cx="8" cy="19.5" r="2" fill="currentColor"/><circle cx="16" cy="19.5" r="2" fill="currentColor"/>',
+  house: '<path fill="currentColor" d="M3 11l9-8 9 8v10h-6v-6h-6v6H3z"/>',
+  tent: '<path fill="currentColor" d="M12 3l9 18H3z"/><path d="M12 9l-3 12h6z" fill="#000" fill-opacity=".4"/>',
+  flag: '<path d="M5 22V3" stroke="currentColor" stroke-width="2"/><path fill="currentColor" d="M6 4h13l-3 4.5 3 4.5H6z"/>',
+  pick: '<path d="M5 20L15 10" stroke="currentColor" stroke-width="2.4"/><path fill="currentColor" d="M10 4c5-2 10 1 11 6-3-3-7-4-11-3z"/>',
+  city: '<path fill="currentColor" d="M3 21V9h5v12zM9 21V4h6v17zM16 21v-9h5v9z"/><rect x="11" y="7" width="2" height="2" fill="#000" fill-opacity=".4"/><rect x="11" y="11" width="2" height="2" fill="#000" fill-opacity=".4"/>',
+  factory: '<path fill="currentColor" d="M3 21V11l5 3v-3l5 3v-3l5 3V3h3v18z"/>',
+  nest: '<ellipse cx="12" cy="15" rx="9" ry="5" fill="currentColor"/><circle cx="9" cy="11" r="2.5" fill="currentColor"/><circle cx="14" cy="10" r="3" fill="currentColor"/>',
+  cross: '<path fill="currentColor" d="M10 2h4v6h6v4h-6v10h-4V12H4V8h6z"/>',
+  hospital: '<rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/><path d="M12 7v10M7 12h10" stroke="#fff" stroke-width="3"/>',
+  flask: '<path fill="currentColor" d="M9 2h6v2h-1v5l6 10a2 2 0 0 1-2 3H6a2 2 0 0 1-2-3l6-10V4H9z"/>',
+  anchor: '<circle cx="12" cy="5" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V21M4 13c0 5 4 8 8 8s8-3 8-8M8 11h8" stroke="currentColor" stroke-width="2" fill="none"/>',
+  drop: '<path fill="currentColor" d="M12 2s7 8 7 13a7 7 0 0 1-14 0c0-5 7-13 7-13z"/>',
+  switch: '<path d="M4 20L12 4l8 16M8 13h8" stroke="currentColor" stroke-width="2.2" fill="none"/>',
+  bunker: '<path fill="currentColor" d="M2 20c0-6 4.5-10 10-10s10 4 10 10z"/><rect x="9" y="14" width="6" height="6" fill="#000" fill-opacity=".45"/>',
+  antenna: '<path d="M12 8v14M8 22l4-14 4 14" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="6" r="2" fill="currentColor"/><path d="M7 3a7 7 0 0 0 0 7M17 3a7 7 0 0 1 0 7" stroke="currentColor" stroke-width="1.8" fill="none"/>',
+  gear: '<path fill="currentColor" d="M10 2h4l.6 3 2.3 1 2.5-1.8 2.8 2.8L20.4 9.5l1 2.3 2.6.5v4l-3 .6-1 2.3 1.8 2.5-2.8 2.8-2.5-1.8-2.3 1L14 22h-4l-.6-3-2.3-1-2.5 1.8-2.8-2.8 1.8-2.5-1-2.3-3-.6v-4l3-.6 1-2.3-1.8-2.5L4.6 3.6 7.1 5.4l2.3-1z" transform="scale(.92) translate(1 1)"/><circle cx="12" cy="12" r="3.5" fill="#000" fill-opacity=".45"/>',
+  leaf: '<path fill="currentColor" d="M20 3C9 3 4 9 4 15c0 2 .5 4 1.5 5.5C8 14 12 11 16 9c-4 3-7 6-9 12 1 .5 2.5 1 4 1 7 0 10-8 9-19z"/>',
+  map: '<path fill="currentColor" d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15" stroke="#000" stroke-opacity=".35"/>',
+  book: '<path fill="currentColor" d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-5a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h5z"/>',
+  key: '<circle cx="7.5" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M11.5 12H21M17 12v4M20 12v3" stroke="currentColor" stroke-width="2.2"/>',
+  keycard: '<rect x="3" y="6" width="18" height="12" rx="2" fill="currentColor"/><rect x="5" y="9" width="6" height="3" fill="#000" fill-opacity=".4"/><path d="M5 15h10" stroke="#000" stroke-opacity=".3"/>',
+  wrench: '<path fill="currentColor" d="M21 7a5 5 0 0 1-6.6 4.7L6 20a2 2 0 0 1-3-3l8.3-8.4A5 5 0 0 1 17 2.1l-3 3 1 3.9 3.9 1z"/>',
+  smg: '<path fill="currentColor" d="M2 9h16l2-2h2v4h-4l-1 2h-6l-1 6H7l1-6H2z"/>',
+  revolver: '<path fill="currentColor" d="M3 8h15v3h-4l-2 2v6H8l1-6H3z"/><circle cx="14" cy="12" r="2.2" fill="currentColor"/>',
+  shotgun: '<path fill="currentColor" d="M1 10h17v2.5H11l-2 2H5l-1 4H2l1-4H1z"/><rect x="12" y="13" width="5" height="2" fill="currentColor"/>',
+  rifle: '<path fill="currentColor" d="M1 11h20v2H10l-3 4H3l1-4H1z"/><rect x="9" y="8" width="6" height="2.2" rx="1" fill="currentColor"/>',
+  launcher: '<rect x="2" y="8" width="18" height="6" rx="3" fill="currentColor"/><path fill="currentColor" d="M6 14h4l-1 6H6z"/>',
+  tesla: '<path d="M3 13h12" stroke="currentColor" stroke-width="4"/><circle cx="18" cy="13" r="3" fill="currentColor"/><path d="M18 8l1-4M21 10l2-2" stroke="currentColor" stroke-width="1.6"/>',
+  machete: '<path fill="currentColor" d="M3 21l3-3 12-13c2-2 4 0 2 2L8 20z"/>',
+  cannon: '<rect x="2" y="9" width="16" height="6" rx="2" fill="currentColor"/><circle cx="8" cy="17" r="4" fill="none" stroke="currentColor" stroke-width="2"/>',
+  flame: '<path fill="currentColor" d="M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 2-5 3-6 0 2 1 3 2 3 0-3-1-6 1-9z"/>',
+  suit: '<path fill="currentColor" d="M8 3h8l3 5v13h-4v-7h-6v7H5V8z"/><circle cx="12" cy="7" r="2.5" fill="#000" fill-opacity=".35"/>',
+  coat: '<path fill="currentColor" d="M8 3l4 3 4-3 4 4v14h-5v-8h-6v8H4V7z"/>',
+  vest: '<path fill="currentColor" d="M7 3h3l2 2 2-2h3l3 4v12H4V7z"/><path d="M8 11h8M8 15h8" stroke="#000" stroke-opacity=".35"/>',
+  mask: '<path fill="currentColor" d="M6 9c0-3 3-5 6-5s6 2 6 5v4c0 4-3 7-6 7s-6-3-6-7z"/><circle cx="9.5" cy="10.5" r="1.8" fill="#000" fill-opacity=".5"/><circle cx="14.5" cy="10.5" r="1.8" fill="#000" fill-opacity=".5"/>',
+  geiger: '<rect x="4" y="6" width="13" height="14" rx="2" fill="currentColor"/><rect x="6" y="8" width="9" height="5" fill="#000" fill-opacity=".45"/><path d="M17 10h3v8" stroke="currentColor" stroke-width="2" fill="none"/>',
+  crowbar: '<path d="M6 21L18 5c1-1.5 3-1 3 1" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M6 21l-2-3" stroke="currentColor" stroke-width="2.6"/>',
+  flashlight: '<path fill="currentColor" d="M3 10h8l4-3v10l-4-3H3z"/><path d="M17 8l4-2M17 12h5M17 16l4 2" stroke="currentColor" stroke-width="1.6"/>',
+  binoculars: '<circle cx="7" cy="15" r="4" fill="currentColor"/><circle cx="17" cy="15" r="4" fill="currentColor"/><rect x="5" y="5" width="4" height="8" fill="currentColor"/><rect x="15" y="5" width="4" height="8" fill="currentColor"/><rect x="9" y="10" width="6" height="3" fill="currentColor"/>',
+  mushroom: '<path fill="currentColor" d="M3 12a9 7 0 0 1 18 0z"/><rect x="9.5" y="12" width="5" height="9" rx="2" fill="currentColor" fill-opacity=".75"/>',
+  isotope: '<rect x="7" y="3" width="10" height="18" rx="3" fill="currentColor"/><circle cx="12" cy="12" r="2.5" fill="#7dff3a"/>',
+  radio: '<rect x="3" y="8" width="18" height="12" rx="2" fill="currentColor"/><path d="M7 8l9-5" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="14" r="2.5" fill="#000" fill-opacity=".45"/>',
+  medal: '<path fill="currentColor" d="M8 2h3l1 5 1-5h3l-3 7a5 5 0 1 1-2 0z"/>',
+  fuse: '<rect x="8" y="3" width="8" height="18" rx="3" fill="currentColor"/><path d="M8 8h8M8 16h8" stroke="#000" stroke-opacity=".35" stroke-width="2"/>',
+  crate: '<rect x="3" y="5" width="18" height="15" rx="1" fill="currentColor"/><path d="M3 9h18M3 16h18M9 5v15M15 5v15" stroke="#000" stroke-opacity=".3"/>',
+  seed: '<path fill="currentColor" d="M5 4h14l-1 16H6z"/><path d="M12 9c0 3-2 5-2 5s3 0 4-2" stroke="#000" stroke-opacity=".35" fill="none"/>',
+  photo: '<rect x="3" y="5" width="18" height="14" rx="1.5" fill="currentColor"/><path d="M5 17l5-5 3 3 2-2 4 4z" fill="#000" fill-opacity=".4"/>',
+  note: '<path fill="currentColor" d="M9 3v12.5A3 3 0 1 0 11 18V8l8-2v7.5A3 3 0 1 0 21 16V2z"/>',
+  box: '<path fill="currentColor" d="M3 7l9-4 9 4v10l-9 4-9-4z"/>',
+  fang: '<path fill="currentColor" d="M4 4h16l-3 6-2-3-2 8-2-8-2 3z"/>',
+  star: '<path fill="currentColor" d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/>',
+  clock: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" fill="none"/>',
+  people: '<circle cx="8" cy="7" r="3" fill="currentColor"/><circle cx="16" cy="7" r="3" fill="currentColor"/><path fill="currentColor" d="M2 20c0-4 3-7 6-7s6 3 6 7zM12 20c0-3 1-5 2.5-6 .5 0 1-.1 1.5-.1 3 0 6 3 6 6.1z"/>',
+  bag: '<path fill="currentColor" d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="2" fill="none"/>',
+  journal: '<path fill="currentColor" d="M5 3h12a2 2 0 0 1 2 2v16H7a2 2 0 0 1-2-2z"/><path d="M8 8h8M8 12h8M8 16h5" stroke="#000" stroke-opacity=".35"/>',
+  pause: '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>',
+  fast: '<path fill="currentColor" d="M3 5l8 7-8 7zM12 5l8 7-8 7z"/>',
+  play: '<path fill="currentColor" d="M6 4l14 8-14 8z"/>',
+  warning: '<path fill="currentColor" d="M12 2l10 19H2z"/><path d="M12 9v5M12 16.5v1.5" stroke="#000" stroke-width="2.2"/>',
+  whistle: '<path fill="currentColor" d="M3 10h11a5 5 0 1 1-5 5H3z"/><path d="M14 10V6h3" stroke="currentColor" stroke-width="2" fill="none"/>',
+  person: '<circle cx="12" cy="7" r="4" fill="currentColor"/><path fill="currentColor" d="M4 21c0-5 3.5-8 8-8s8 3 8 8z"/>',
+  close: '<path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>',
+};
+
+export function icon(name: string, size = 18, color?: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = 'ico';
+  if (color) span.style.color = color;
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${P[name] ?? P.box}</svg>`;
+  return span;
+}
+
+export function iconSvg(name: string, size = 18): string {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${P[name] ?? P.box}</svg>`;
+}
+
+/** Contenu brut (chemins) d'une icône, pour l'insérer dans un SVG existant. */
+export function iconInner(name: string): string {
+  return P[name] ?? P.box;
+}
