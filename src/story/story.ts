@@ -149,7 +149,7 @@ export class Story {
 
   private advance(to: number): void {
     const q = this.main();
-    if (!q) return;
+    if (!q || q.stage >= to) return;
     q.stage = to;
     const s = STAGES[to];
     q.title = `Acte ${to + 1} — ${s.title}`;
@@ -185,6 +185,19 @@ export class Story {
     const g = this.game;
     const all = (ids: string[]) => ids.every((i) => this.isDone(i));
     switch (q.stage) {
+      case 1:
+        if (g.hasItem('spores_lumen')) {
+          this.markSilently('spores');
+          this.advance(2);
+        }
+        break;
+      case 3:
+        if (g.hasItem('isotope')) {
+          this.markSilently('arriver');
+          this.markSilently('isotope');
+          this.advance(4);
+        }
+        break;
       case 2:
         if (g.hasItem('combinaison') || g.state.player.gear.corps === 'combinaison') this.markSilently('combinaison');
         if (g.hasItem('geiger')) this.markSilently('geiger');
@@ -427,8 +440,33 @@ export class Story {
     if (cur === 'col' && to === 'polaris' && !this.colLeversOk()) {
       return this.game.hasItem('plan_col') ? 'Les aiguillages ne sont pas réglés selon le plan d\'Ingrid !' : 'Sans le plan des aiguillages, impossible de savoir quelle voie mène à Polaris.';
     }
-    if (to === 'givre' && this.flag('isotope_vole') && cur === 'radio_echo') {
-      return null;
+    // le réseau ne permet pas de revenir en arrière : on ne quitte pas une gare clé sans ce qu'on est venu y chercher
+    const g = this.game;
+    const has = (id: string) => g.hasItem(id);
+    switch (cur) {
+      case 'creux_noir':
+        if (!has('spores_lumen')) return 'Vous n\'avez pas encore les Spores de Lumen : fouillez le fond des galeries avant de repartir.';
+        break;
+      case 'carrefour':
+        if (q?.stage === 2 && !this.isDone('silas')) return 'L\'informateur Silas Vex vous attend au marché : parlez-lui avant de repartir.';
+        if (to === 'cimetiere_locos' && !has('combinaison') && this.st.player.gear.corps !== 'combinaison') return 'Sans combinaison anti-radiations, Valpierre vous tuera. Achetez-en une à Mama Jo, ou passez par Garde-Fer où la milice en fournit.';
+        break;
+      case 'garde_fer':
+        if (!has('combinaison') && this.st.player.gear.corps !== 'combinaison') return 'Sans combinaison anti-radiations, inutile d\'aller à Valpierre : accomplissez la mission du lieutenant Lambert.';
+        break;
+      case 'valpierre':
+        if (!has('isotope') && !this.flag('isotope_vole')) return 'L\'isotope est encore dans le bâtiment réacteur !';
+        break;
+      case 'morne_brume':
+        if (!has('catalyseur') || !has('formule')) return 'Il vous manque encore le catalyseur K-9 ou le carnet du Pr Hallström.';
+        if (to === 'radio_echo' && this.flag('isotope_vole')) return 'Silas a emporté l\'isotope à Fort-Rouille : c\'est là qu\'il faut aller le reprendre.';
+        break;
+      case 'fort_rouille':
+        if (this.flag('isotope_vole')) return 'L\'isotope volé est encore ici, dans le coffre du Baron !';
+        break;
+      case 'givre':
+        if (!has('plan_col')) return 'Ingrid ne vous a pas encore confié le plan des aiguillages du Col.';
+        break;
     }
     return null;
   }
