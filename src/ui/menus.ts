@@ -6,7 +6,7 @@ import { loadMeta, saveMeta, META_PERKS } from '../state/meta';
 import { formatTime } from '../core/math';
 import type { Game } from '../game/Game';
 import type { UI } from './UI';
-import type { GameMode } from '../state/types';
+import type { GameMode, GameState } from '../state/types';
 
 let menuEl: HTMLElement | null = null;
 
@@ -53,13 +53,18 @@ function renderHome(ui: UI, game: Game, inner: HTMLElement): void {
     btn([icon('star', 16), `Héritage (${meta.points} pts)`], () => renderHeritage(ui, game, inner)),
     btn([icon('gear', 16), 'Options'], () => renderOptions(ui, game, inner, () => renderHome(ui, game, inner))),
     btn([icon('journal', 16), 'Aide & commandes'], () => renderHelp(ui, game, inner, () => renderHome(ui, game, inner))),
-    btn([icon('bag', 16), 'Importer une sauvegarde'], () => importFile(ui, game)),
+    btn([icon('bag', 16), 'Importer une sauvegarde'], () => renderImport(ui, game, inner)),
     h('div', { class: 'foot' },
       hasStorage() ? 'Sauvegarde automatique à chaque gare (stockage local du navigateur).' : 'Stockage local indisponible : utilisez l\'export de sauvegarde.',
       h('br'),
       `Meilleure distance en infini : gare n°${meta.bestLayer} · ${meta.runs} partie(s).`,
     ),
   );
+}
+
+/** Reprend directement une partie (rechargement à chaud de la page publiée). */
+export function resumeGame(ui: UI, game: Game, state: GameState): void {
+  start(ui, game, () => game.loadState(state));
 }
 
 function start(ui: UI, game: Game, fn: () => void): void {
@@ -224,6 +229,27 @@ export function renderHelp(ui: UI, game: Game, inner: HTMLElement, back: () => v
   );
 }
 
+/** Import d'une sauvegarde : texte collé (fonctionne partout) ou fichier JSON. */
+function renderImport(ui: UI, game: Game, inner: HTMLElement): void {
+  clear(inner);
+  const area = h('textarea', { class: 'save-text', id: 'import-save', placeholder: 'Collez ici le texte de votre sauvegarde…', spellcheck: 'false' }) as HTMLTextAreaElement;
+  const load = () => {
+    const state = importSave(area.value.trim());
+    if (!state) return ui.toast('Ce texte n\'est pas une sauvegarde valide de Rails de Cendres.', 'mauvais');
+    start(ui, game, () => game.loadState(state));
+  };
+  inner.append(
+    h('h2', { style: 'font-size:30px' }, 'Importer'),
+    h('div', { class: 'small muted' }, 'Collez le texte obtenu avec « Exporter la sauvegarde » (menu Pause), ou choisissez un fichier .json.'),
+    area,
+    h('div', { class: 'row wrap' },
+      btn([icon('play', 16), 'Charger ce texte'], load, 'primary'),
+      btn([icon('bag', 16), 'Choisir un fichier…'], () => importFile(ui, game)),
+      btn('Retour', () => renderHome(ui, game, inner)),
+    ),
+  );
+}
+
 function importFile(ui: UI, game: Game): void {
   const input = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none' }) as HTMLInputElement;
   input.addEventListener('change', async () => {
@@ -251,15 +277,8 @@ export function showPauseMenu(ui: UI, game: Game): void {
       const ok = saveGame(st, st.map.nodes[st.map.current]?.name ?? '');
       ui.toast(ok ? 'Partie sauvegardée.' : 'Échec de la sauvegarde.', ok ? 'bon' : 'mauvais');
     }, '', { disabled: !atStation }),
-    btn([icon('journal', 16), 'Exporter la sauvegarde (fichier)'], () => {
-      const blob = new Blob([exportSave(st)], { type: 'application/json' });
-      const a = h('a', { href: URL.createObjectURL(blob), download: `rails-de-cendres-${st.mode}-jour${Math.floor(st.time / 1440) + 1}.json` }) as HTMLAnchorElement;
-      document.body.appendChild(a);
-      a.click();
-      window.setTimeout(() => {
-        URL.revokeObjectURL(a.href);
-        a.remove();
-      }, 1000);
+    btn([icon('journal', 16), 'Exporter la sauvegarde'], () => {
+      openExport(ui, game);
     }),
     btn([icon('gear', 16), 'Options'], () => {
       const inner = h('div', { class: 'stack' });
@@ -277,6 +296,45 @@ export function showPauseMenu(ui: UI, game: Game): void {
     }, 'danger'),
   );
   ui.openModal(body, { title: 'Pause', className: 'narrow' });
+}
+
+/** Export : texte à copier (toujours disponible) et fichier (si le navigateur l'autorise). */
+function openExport(ui: UI, game: Game): void {
+  const st = game.state;
+  const text = exportSave(st);
+  const area = h('textarea', { class: 'save-text', id: 'export-save', readonly: true, spellcheck: 'false' }, text) as HTMLTextAreaElement;
+  area.value = text;
+  const copy = () => {
+    const fallback = () => {
+      area.focus();
+      area.select();
+      ui.toast('Texte sélectionné : copiez-le avec Ctrl+C (ou appui long).', 'info');
+    };
+    try {
+      navigator.clipboard.writeText(text).then(() => ui.toast('Sauvegarde copiée dans le presse-papiers.', 'bon'), fallback);
+    } catch {
+      fallback();
+    }
+  };
+  const download = () => {
+    const blob = new Blob([text], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `rails-de-cendres-${st.mode}-jour${Math.floor(st.time / 1440) + 1}.json` }) as HTMLAnchorElement;
+    document.body.appendChild(a);
+    a.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
+  };
+  const body = h('div', { class: 'stack' },
+    h('div', { class: 'small muted' }, 'Gardez ce texte en lieu sûr (note, message…). Pour reprendre la partie ailleurs : menu principal › Importer une sauvegarde, puis collez-le.'),
+    area,
+    h('div', { class: 'row wrap' },
+      btn([icon('journal', 16), 'Copier le texte'], copy, 'primary'),
+      btn([icon('bag', 16), 'Télécharger un fichier'], download),
+    ),
+  );
+  ui.openModal(body, { title: 'Exporter la sauvegarde', className: 'narrow' });
 }
 
 export function showGameOver(ui: UI, game: Game, victory: boolean, reason: string, heritage: number): void {

@@ -14,6 +14,7 @@ import type { ContainerSpec } from '../world/stationBuilder';
 import type { MapNode } from '../state/types';
 import type { Interactable } from '../game/types';
 import type { ResourceId } from '../data/items';
+import { TouchControls } from './touch';
 
 export type ToastKind = 'info' | 'bon' | 'mauvais' | 'quete';
 
@@ -23,6 +24,9 @@ interface FloatText {
   y: number;
   z: number;
   t: number;
+  /** Cumul des dégâts successifs sur une même cible. */
+  key?: string;
+  value?: number;
 }
 
 export interface ModalOpts {
@@ -48,6 +52,7 @@ export class UI {
   menuOpen = false;
   private bubbleEls = new Map<string, HTMLDivElement>();
   lastDashTab: DashTab = 'train';
+  readonly touch: TouchControls;
 
   constructor(readonly game: Game, root: HTMLElement) {
     this.root = root;
@@ -59,7 +64,8 @@ export class UI {
     this.bannerLayer = h('div', { class: 'hud' });
     this.modalLayer = h('div', { class: 'hud' });
     this.fader = h('div', { class: 'fader' });
-    root.append(this.bubbleLayer, this.floatLayer, this.toastsEl, this.bannerLayer, this.modalLayer, this.fader);
+    this.touch = new TouchControls(game, game.engine.renderer.domElement);
+    root.append(this.bubbleLayer, this.floatLayer, this.toastsEl, this.bannerLayer, this.touch.el, this.modalLayer, this.fader);
     // déverrouille l'audio au premier clic
     window.addEventListener('pointerdown', () => game.audio.unlock(), { once: false });
     window.addEventListener('keydown', () => game.audio.unlock(), { once: false });
@@ -205,14 +211,28 @@ export class UI {
     window.setTimeout(tick, dur);
   }
 
-  floatText(x: number, y: number, z: number, text: string, color: string): void {
+  floatText(x: number, y: number, z: number, text: string, color: string, key?: string): void {
+    const value = Number(text);
+    if (key && Number.isFinite(value)) {
+      const f = this.floats.find((o) => o.key === key && o.t < 0.5);
+      if (f) {
+        f.value = (f.value ?? 0) + value;
+        f.el.textContent = String(Math.round(f.value));
+        f.el.style.color = color;
+        f.x = x;
+        f.y = y;
+        f.z = z;
+        f.t = Math.min(f.t, 0.12);
+        return;
+      }
+    }
     if (this.floats.length > 40) {
       this.floats[0].el.remove();
       this.floats.shift();
     }
     const el = h('div', { class: 'float', style: `color:${color}` }, text);
     this.floatLayer.appendChild(el);
-    this.floats.push({ el, x: x + (Math.random() - 0.5) * 0.5, y, z, t: 0 });
+    this.floats.push({ el, x: x + (Math.random() - 0.5) * 0.5, y, z, t: 0, key, value: Number.isFinite(value) ? value : undefined });
   }
 
   stationBanner(node: MapNode): void {

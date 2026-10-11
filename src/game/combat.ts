@@ -21,7 +21,7 @@ export interface CombatHost {
   trainInside(x: number, z: number): boolean;
   addHazard(h: Hazard): void;
   onKill(victim: Actor, src: DamageSource): void;
-  floatText(x: number, y: number, z: number, text: string, color: string): void;
+  floatText(x: number, y: number, z: number, text: string, color: string, key?: string): void;
   /** Vitesse du sol (train en marche), pour les effets accrochés au décor. */
   groundSpeed(): number;
 }
@@ -299,7 +299,7 @@ export class Combat {
       t.slow = Math.max(t.slow, src.slow);
       t.slowT = 2;
     }
-    if (src.faction === 'joueur') this.host.floatText(t.x, t.y + t.height + 0.3, t.z, String(Math.round(amount)), src.kind === 'feu' ? '#ff9a40' : src.kind === 'arc' ? '#8fd8ff' : '#ffe9a0');
+    if (src.faction === 'joueur') this.host.floatText(t.x, t.y + t.height + 0.3, t.z, String(Math.round(amount)), src.kind === 'feu' ? '#ff9a40' : src.kind === 'arc' ? '#8fd8ff' : '#ffe9a0', `dmg:${t.id}`);
     if (!t.alive) this.host.onKill(t, src);
   }
 

@@ -46,6 +46,15 @@ export class Hud {
     this.train = h('div', { class: 'hud-panel hud-train interactive' });
     this.obj = h('div', { class: 'hud-panel hud-obj' });
     this.prompt = h('div', { class: 'hud-prompt' });
+    // en tactile, toucher l'invite équivaut à la touche E (maintenir pour les actions longues)
+    this.prompt.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      game.input.virtualKey('KeyE', 'e', true);
+    });
+    const releaseE = () => game.input.virtualKey('KeyE', 'e', false);
+    this.prompt.addEventListener('pointerup', releaseE);
+    this.prompt.addEventListener('pointercancel', releaseE);
+    this.prompt.addEventListener('pointerleave', releaseE);
     this.alert = h('div', { class: 'hud-alert' });
     this.fps = h('div', { class: 'fps' });
     this.markers = new WorldMarkers(game);
@@ -55,6 +64,7 @@ export class Hud {
   setVisible(v: boolean): void {
     this.visible = v;
     this.el.style.display = v ? 'block' : 'none';
+    document.documentElement.classList.toggle('ingame', v);
   }
 
   update(dt: number): void {
@@ -252,6 +262,20 @@ export class Hud {
     this.obj.style.display = 'block';
     const main = quests.find((q) => q.kind === 'principale');
     const side = quests.filter((q) => q.kind === 'secondaire').slice(0, 2);
+    // petit écran : une seule ligne, le prochain objectif de la quête suivie
+    const compact = window.innerWidth < 900 || window.innerHeight < 500;
+    this.obj.classList.toggle('compact', compact);
+    if (compact) {
+      const q = main ?? side[0];
+      const o = q?.objectives.find((x) => !x.done && !x.optional) ?? q?.objectives.find((x) => !x.done);
+      if (!q || !o) {
+        this.obj.style.display = 'none';
+        return;
+      }
+      const prog = o.count ? ` (${o.progress ?? 0}/${o.count})` : '';
+      this.obj.append(h('div', { class: 'obj' }, h('span', { class: 'chk' }, '◆'), h('span', null, o.text + prog)));
+      return;
+    }
     for (const q of [main, ...side]) {
       if (!q) continue;
       this.obj.append(h('h4', null, q.title));

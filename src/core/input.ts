@@ -23,6 +23,10 @@ export class Input {
   /** Vrai quand la souris survole un élément d'interface (pas le canvas). */
   overUI = false;
   enabled = true;
+  /** Déplacement analogique fourni par le joystick tactile (prioritaire sur le clavier). */
+  touchMove: { x: number; z: number } | null = null;
+  /** Vrai dès qu'une commande tactile a été utilisée. */
+  touchMode = false;
 
   constructor(private canvas: HTMLElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -73,6 +77,7 @@ export class Input {
   clearAll(): void {
     this.down.clear();
     this.mouseDown.clear();
+    this.touchMove = null;
     this.pressedCodes.clear();
     this.pressedKeys.clear();
   }
@@ -109,8 +114,35 @@ export class Input {
     return this.enabled && this.mousePressed.has(button);
   }
 
+  /** Touche virtuelle (commandes tactiles) : se comporte comme une vraie touche. */
+  virtualKey(code: string, key: string, down: boolean): void {
+    if (down) {
+      if (!this.down.has(code)) this.pressedCodes.add(code);
+      this.down.add(code);
+      this.pressedKeys.add(key.length === 1 ? key.toLowerCase() : key);
+    } else {
+      this.down.delete(code);
+      this.releasedCodes.add(code);
+    }
+  }
+
+  /** Visée/tir au doigt : déplace le pointeur et presse le bouton principal. */
+  virtualPointer(x: number, y: number, down: boolean): void {
+    this.mouseX = x;
+    this.mouseY = y;
+    this.overUI = false;
+    if (down && !this.mouseDown.has(0)) {
+      this.mouseDown.add(0);
+      this.mousePressed.add(0);
+    } else if (!down && this.mouseDown.has(0)) {
+      this.mouseDown.delete(0);
+      this.mouseReleased.add(0);
+    }
+  }
+
   /** Axe de déplacement (-1..1) selon les positions physiques WASD/ZQSD + flèches. */
   moveAxis(): { x: number; z: number } {
+    if (this.enabled && this.touchMove) return { ...this.touchMove };
     let x = 0;
     let z = 0;
     if (this.isDown('KeyW') || this.isDown('ArrowUp')) z -= 1;

@@ -673,8 +673,8 @@ export class Game implements CombatHost {
     this.engine.rig.shake(amount);
   }
 
-  floatText(x: number, y: number, z: number, text: string, color: string): void {
-    this.ui.floatText(x, y, z, text, color);
+  floatText(x: number, y: number, z: number, text: string, color: string, key?: string): void {
+    this.ui.floatText(x, y, z, text, color, key);
   }
 
   groundSpeed(): number {
