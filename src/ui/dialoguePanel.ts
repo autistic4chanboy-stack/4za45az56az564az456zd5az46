@@ -1,5 +1,6 @@
 import { h, clear, bar } from './dom';
-import { portrait } from './portrait';
+import { portraitSpec, baseMood } from './portrait';
+import { portraitSvg, type Mood } from './portraitArt';
 import { PERSONALITIES, SKILLS, JOBS, SECRETS, type JobId } from '../data/npcs';
 import { WAGON_TYPES } from '../data/train';
 import { ARCHETYPES } from '../data/stations';
@@ -20,31 +21,138 @@ interface Opt {
 export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
   const n = actor.data;
   actor.talking = true;
-  const header = h('div', { class: 'stack', style: 'align-items:center;text-align:center' });
-  const text = h('div', { class: 'dlg-text' });
-  const opts = h('div', { class: 'dlg-opts' });
-  const body = h('div', { class: 'dlg' }, header, h('div', null, text, opts));
-  ui.openModal(body, { title: n.name, className: 'medium', onClose: () => { actor.talking = false; } });
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const renderHeader = () => {
-    clear(header);
-    header.append(portrait(n, true));
-    header.append(h('div', { class: 'pill' }, `${SKILLS[n.skill].name} ${'★'.repeat(n.skillLevel)}`));
-    header.append(h('div', { class: 'pill' }, n.known.personality ? PERSONALITIES[n.personality].name : 'Caractère ?'));
-    if (n.known.secret && n.secret) header.append(h('div', { class: `pill ${n.secret === 'veteran' ? 'good' : 'bad'}` }, SECRETS[n.secret].name));
-    if (n.status !== 'resident' && n.status !== 'parti') {
-      header.append(h('div', { style: 'width:100%' }, bar(n.morale, 100, 'morale thin')));
-      header.append(h('div', { class: 'small muted' }, `Moral ${Math.round(n.morale)}`));
-    }
-    if (n.disease && (n.disease.known || n.disease.incubation <= 0)) header.append(h('div', { class: 'pill bad' }, diseaseName(n.disease)));
+  // ---------------------------------------------------------------- cadre du personnage qui parle
+  const art = h('div', { class: 'portrait-art' });
+  const frame = h('div', { class: 'speaker-frame' }, art, ...['tl', 'tr', 'bl', 'br'].map((k) => h('i', { class: `rivet ${k}` })));
+  const role = h('div', { class: 'speaker-role' });
+  const tags = h('div', { class: 'tags' });
+  const moral = h('div', { class: 'moral' });
+  const speaker = h('div', { class: 'speaker' }, frame, h('div', { class: `speaker-name${n.name.length > 17 ? ' long' : ''}` }, n.name), role, tags, moral);
+  const textNode = document.createTextNode('');
+  const text = h('div', { class: 'dlg-text', title: 'Cliquer pour tout afficher' }, textNode, h('span', { class: 'caret' }));
+  const opts = h('div', { class: 'dlg-opts' });
+  const body = h('div', { class: 'dlg' }, speaker, h('div', { class: 'dlg-main' }, text, opts));
+  const lv0 = game.stationLevel();
+  const title = n.status === 'equipage' ? 'Équipage' : n.status === 'passager' ? 'Passager' : n.status === 'prisonnier' ? 'Prisonnier' : lv0 ? lv0.node.name : 'Rencontre';
+  ui.openModal(body, { title, className: 'medium dialogue', onClose: () => { actor.talking = false; stopAll(); } });
+
+  const renderInfo = () => {
+    role.textContent = `${SKILLS[n.skill].name} ${'★'.repeat(n.skillLevel)}${n.known.personality ? ` · ${PERSONALITIES[n.personality].name}` : ''}`;
+    clear(tags);
+    if (n.status === 'equipage') tags.append(h('div', { class: 'pill' }, JOBS[n.job].name));
+    if (n.known.secret && n.secret) tags.append(h('div', { class: `pill ${n.secret === 'veteran' ? 'good' : 'bad'}` }, SECRETS[n.secret].name));
+    if (n.disease && (n.disease.known || n.disease.incubation <= 0)) tags.append(h('div', { class: 'pill bad' }, diseaseName(n.disease)));
+    clear(moral);
+    if (n.status !== 'resident' && n.status !== 'parti') moral.append(bar(n.morale, 100, 'morale thin'), h('div', { class: 'small muted', style: 'text-align:center;margin-top:3px' }, `Moral ${Math.round(n.morale)}`));
   };
 
-  const show = (t: string, options: Opt[]) => {
-    renderHeader();
-    text.textContent = t;
+  // ---------------------------------------------------------------- portrait animé
+  let svg: SVGSVGElement | null = null;
+  let sig = '';
+  const setMood = (m: Mood) => {
+    const spec = portraitSpec(n, m);
+    const key = `${m}|${spec.sick}|${spec.hurt}`;
+    if (key === sig && svg) return;
+    sig = key;
+    art.innerHTML = portraitSvg(spec, { anim: !reduced });
+    svg = art.querySelector('svg');
+    mouth = 0;
+  };
+  let mouth = 0;
+  const setMouth = (m: number) => {
+    if (!svg || m === mouth) return;
+    mouth = m;
+    svg.classList.toggle('pt-talk-1', m === 1);
+    svg.classList.toggle('pt-talk-2', m === 2);
+  };
+  const timers = new Set<number>();
+  const later = (fn: () => void, ms: number) => {
+    const t = window.setTimeout(() => {
+      timers.delete(t);
+      if (body.isConnected) fn();
+    }, ms);
+    timers.add(t);
+  };
+  const flick = (cls: string, ms: number) => {
+    svg?.classList.add(cls);
+    const el = svg;
+    later(() => el?.classList.remove(cls), ms);
+  };
+  const blink = () => later(() => {
+    flick('pt-blink', 120);
+    if (Math.random() < 0.18) later(() => flick('pt-blink', 110), 260);
+    blink();
+  }, 2200 + Math.random() * 3600);
+  const glance = () => later(() => {
+    flick(Math.random() < 0.5 ? 'pt-look-l' : 'pt-look-r', 700 + Math.random() * 900);
+    glance();
+  }, 3500 + Math.random() * 5000);
+  if (!reduced) {
+    blink();
+    glance();
+  }
+
+  // ---------------------------------------------------------------- texte qui s'écrit, bouche synchronisée
+  let full = '';
+  let shown = 0;
+  let pause = 0;
+  let typing = 0;
+  let mouthAt = 0;
+  const finishTyping = () => {
+    if (typing) window.clearInterval(typing);
+    typing = 0;
+    shown = full.length;
+    textNode.data = full;
+    text.classList.remove('typing');
+    frame.classList.remove('talking');
+    setMouth(0);
+  };
+  const say = (t: string) => {
+    full = t;
+    shown = 0;
+    pause = 0;
+    textNode.data = '';
+    if (typing) window.clearInterval(typing);
+    typing = 0;
+    if (reduced || !t) return finishTyping();
+    text.classList.add('typing');
+    frame.classList.add('talking');
+    const step = t.length > 260 ? 3 : 2;
+    typing = window.setInterval(() => {
+      if (!body.isConnected) return stopAll();
+      if (pause > 0) {
+        pause--;
+        setMouth(0);
+        return;
+      }
+      shown = Math.min(full.length, shown + step);
+      textNode.data = full.slice(0, shown);
+      const ch = full[shown - 1] ?? '';
+      if (/[.!?…]/.test(ch)) pause = 7;
+      else if (/[,;:]/.test(ch)) pause = 3;
+      const now = performance.now();
+      if (now - mouthAt > 90) {
+        mouthAt = now;
+        let m = /[\s.,;:!?…«»"'()\-—]/.test(ch) ? 0 : /[aeiouyàâäéèêëîïôöùûüœ]/i.test(ch) ? 2 : 1;
+        if (m && m === mouth) m = m === 2 ? 1 : 2;
+        setMouth(m);
+      }
+      if (shown >= full.length) finishTyping();
+    }, 30);
+  };
+  text.addEventListener('click', () => {
+    if (typing) finishTyping();
+  });
+
+  const show = (t: string, options: Opt[], m?: Mood) => {
+    renderInfo();
+    setMood(m ?? baseMood(n));
+    say(t);
     clear(opts);
     options.forEach((o, i) => {
-      const el = h('button', { class: `dlg-opt ${o.tone ?? ''}` }, h('span', { class: 'num' }, `${i + 1}.`), o.text);
+      const el = h('button', { class: `dlg-opt ${o.tone ?? ''}`, style: `--i:${i}` }, h('span', { class: 'num' }, `${i + 1}.`), o.text);
       el.addEventListener('click', () => {
         game.audio.play('ui');
         o.go();
@@ -52,6 +160,11 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
       opts.append(el);
     });
     keyHandler = (e: KeyboardEvent) => {
+      if ((e.key === ' ' || e.key === 'Enter') && typing) {
+        e.preventDefault();
+        finishTyping();
+        return;
+      }
       const k = Number(e.key);
       if (k >= 1 && k <= options.length) {
         e.preventDefault();
@@ -62,16 +175,21 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
   let keyHandler: ((e: KeyboardEvent) => void) | null = null;
   const onKey = (e: KeyboardEvent) => keyHandler?.(e);
   window.addEventListener('keydown', onKey);
-  const close = () => {
+  const stopAll = () => {
+    if (typing) window.clearInterval(typing);
+    typing = 0;
+    for (const t of timers) window.clearTimeout(t);
+    timers.clear();
     window.removeEventListener('keydown', onKey);
+    obs.disconnect();
+  };
+  const close = () => {
+    stopAll();
     ui.closeModal();
   };
   // nettoyage si fermé autrement
   const obs = new MutationObserver(() => {
-    if (!body.isConnected) {
-      window.removeEventListener('keydown', onKey);
-      obs.disconnect();
-    }
+    if (!body.isConnected) stopAll();
   });
   obs.observe(ui.root, { childList: true, subtree: true });
 
@@ -111,7 +229,8 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
     return p.greet[Math.floor(Math.random() * p.greet.length)];
   };
 
-  const residentMenu = (msg?: string) => {
+  const fearful = n.personality === 'peureux' || n.personality === 'paranoiaque';
+  const residentMenu = (msg?: string, mood?: Mood) => {
     const lv = game.stationLevel();
     const options: Opt[] = [];
     options.push({ text: 'Qui êtes-vous ?', go: () => residentMenu(`${n.bio} ${SKILLS[n.skill].pitch[n.id.length % SKILLS[n.skill].pitch.length]}`) });
@@ -129,9 +248,9 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
         go: () => {
           const p = PERSONALITIES[n.personality];
           const err = game.crewSystem.recruit(n);
-          if (err) residentMenu(err);
+          if (err) residentMenu(err, 'renfrogne');
           else {
-            text.textContent = p.accept[0];
+            say(p.accept[0]);
             close();
           }
         },
@@ -142,12 +261,12 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
       options.push({ text: 'Services de la gare', go: () => { close(); ui.openTrade(lv.node, null); } });
     }
     options.push({ text: 'Au revoir.', go: close });
-    show(msg ?? greet(), options);
+    show(msg ?? greet(), options, mood);
   };
 
   const questOffer = (q: NonNullable<ReturnType<typeof game.quests.offerFor>>) => {
     show(q.desc + (q.reward?.jetons ? ` (Récompense : ${q.reward.jetons} jetons)` : ''), [
-      { text: 'J\'accepte.', tone: 'quete', go: () => { game.quests.accept(q); residentMenu('Merci ! Je compte sur vous.'); } },
+      { text: 'J\'accepte.', tone: 'quete', go: () => { game.quests.accept(q); residentMenu('Merci ! Je compte sur vous.', 'joie'); } },
       { text: 'Pas maintenant.', go: () => residentMenu('Comme vous voudrez.') },
     ]);
   };
@@ -166,9 +285,10 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
     return parts.join(' ');
   };
 
-  const crewMenu = (msg?: string) => {
+  const moraleMood = (): Mood | undefined => (n.morale > 75 ? 'joie' : n.morale < 25 ? 'triste' : undefined);
+  const crewMenu = (msg?: string, mood?: Mood) => {
     const options: Opt[] = [];
-    options.push({ text: 'Comment ça va ?', go: () => crewMenu(statusText()) });
+    options.push({ text: 'Comment ça va ?', go: () => crewMenu(statusText(), moraleMood()) });
     options.push({ text: 'Parle-moi de toi.', go: () => interro('amical') });
     if (n.status === 'equipage') options.push({ text: 'Ordres…', go: () => ordersMenu() });
     options.push({ text: 'Interroger…', go: () => interroMenu() });
@@ -181,33 +301,33 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
           if (n.disease?.id === 'infection') n.disease = null;
           n.affinity += 4;
           game.engine.fx.heal(actor.x, actor.y + 1, actor.z);
-          crewMenu('Merci… ça va mieux.');
+          crewMenu('Merci… ça va mieux.', 'joie');
         },
       });
     }
     options.push({
       text: 'Donner une prime (20 jetons)',
       go: () => {
-        if (!game.economy.pay(20)) return crewMenu('Vous n\'avez pas de quoi.');
+        if (!game.economy.pay(20)) return crewMenu('Vous n\'avez pas de quoi.', 'renfrogne');
         n.morale = clamp(n.morale + (n.personality === 'cupide' ? 18 : 10), 0, 100);
         n.affinity += n.personality === 'cupide' ? 10 : 5;
-        crewMenu(n.personality === 'cupide' ? 'Ah ! Voilà qui parle ma langue.' : 'C\'est gentil, merci.');
+        crewMenu(n.personality === 'cupide' ? 'Ah ! Voilà qui parle ma langue.' : 'C\'est gentil, merci.', n.personality === 'cupide' ? 'malice' : 'joie');
       },
     });
     const lv = game.stationLevel();
-    if (n.status === 'prisonnier') options.push({ text: 'Le libérer de sa cellule', go: () => { game.crewSystem.release(n); crewMenu('Enfin… merci.'); } });
-    else if (game.state.train.wagons.some((w) => w.type === 'cellule')) options.push({ text: 'L\'enfermer en cellule', tone: 'danger', go: () => { const err = game.crewSystem.imprison(n); crewMenu(err ?? 'Vous n\'avez pas le droit !'); } });
+    if (n.status === 'prisonnier') options.push({ text: 'Le libérer de sa cellule', go: () => { game.crewSystem.release(n); crewMenu('Enfin… merci.', 'joie'); } });
+    else if (game.state.train.wagons.some((w) => w.type === 'cellule')) options.push({ text: 'L\'enfermer en cellule', tone: 'danger', go: () => { const err = game.crewSystem.imprison(n); crewMenu(err ?? 'Vous n\'avez pas le droit !', fearful ? 'peur' : 'colere'); } });
     if (lv) options.push({ text: 'Débarquer ici', tone: 'danger', go: () => confirm(`${n.name} descendra à ${lv.node.name}.`, () => { game.crewSystem.dismiss(n); close(); }) });
     else options.push({ text: 'L\'expulser du train', tone: 'danger', go: () => confirm(`Jeter ${n.name} du train en pleine voie ? L'équipage risque d'être choqué si sa culpabilité n'est pas établie.`, () => { game.crewSystem.expel(n); close(); }) });
     options.push({ text: 'Au revoir.', go: close });
-    show(msg ?? greet(), options);
+    show(msg ?? greet(), options, mood);
   };
 
   const confirm = (t: string, yes: () => void) => {
     show(t, [
       { text: 'Confirmer', tone: 'danger', go: yes },
       { text: 'Annuler', go: () => crewMenu() },
-    ]);
+    ], 'inquiet');
   };
 
   const ordersMenu = () => {
@@ -222,7 +342,7 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
         text: `${j === 'suivre' ? 'Viens avec moi (escorte en exploration)' : `Poste : ${JOBS[j].name}`}${fit ? ' ★' : ''}`,
         go: () => {
           const ok = game.crewSystem.assignJob(n, j);
-          crewMenu(ok ? PERSONALITIES[n.personality].accept[0] : actor.bubble ?? 'Non.');
+          crewMenu(ok ? PERSONALITIES[n.personality].accept[0] : actor.bubble ?? 'Non.', ok ? undefined : 'renfrogne');
         },
       });
     }
@@ -236,7 +356,7 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
       text: `${i + 1}. ${WAGON_TYPES[w.type].name}${w.uid === n.wagon ? ' (actuel)' : ''}`,
       go: () => {
         const ok = game.crewSystem.moveToWagon(n, w.uid);
-        crewMenu(ok ? PERSONALITIES[n.personality].accept[0] : actor.bubble ?? 'Non.');
+        crewMenu(ok ? PERSONALITIES[n.personality].accept[0] : actor.bubble ?? 'Non.', ok ? undefined : 'renfrogne');
       },
     }));
     options.push({ text: 'Retour', go: () => ordersMenu() });
@@ -268,7 +388,8 @@ export function openDialogue(ui: UI, game: Game, actor: NpcActor): void {
     }
     options.push({ text: 'Autre question…', go: () => interroMenu() });
     options.push({ text: 'Retour', go: () => crewMenu() });
-    show(`${r.text} ${extra.join(' ')}`.trim(), options);
+    const mood: Mood | undefined = r.confession ? 'triste' : a === 'menace' || a === 'fouille' ? (fearful ? 'peur' : 'colere') : a === 'soupcons' ? 'inquiet' : undefined;
+    show(`${r.text} ${extra.join(' ')}`.trim(), options, mood);
   };
 
   if (tree) runTree(tree, 'start');

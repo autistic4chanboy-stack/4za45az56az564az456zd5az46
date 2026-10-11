@@ -1,3 +1,4 @@
+import { faceTraits } from '../data/faces';
 import { ENEMIES, type EnemyDef, type EnemyId } from '../data/enemies';
 import { WEAPONS, type WeaponDef } from '../data/weapons';
 import { BAL, DIFFICULTIES } from '../data/balance';
@@ -93,14 +94,15 @@ export class Enemy implements Actor {
     this.weapon = WEAPONS[def.weapon];
     if (def.model === 'humanoid') {
       const rng = new Rng(seed);
-      const look = randomLook(rng, rng.chance(0.3));
+      const female = rng.chance(0.3);
+      const look = randomLook(rng, female);
       look.shirt = def.color;
       look.pants = def.color2;
       if (def.id === 'infecte') {
         look.skin = 0x8a9a7a;
         look.shirt = 0x6a6a5a;
       }
-      const h = new Humanoid(look, { scale: def.scale, mask: def.faction === 'bandit' && rng.chance(0.35), armorColor: def.armor ? 0x3a3a3a : undefined });
+      const h = new Humanoid(look, { scale: def.scale, mask: def.faction === 'bandit' && rng.chance(0.35), armorColor: def.armor ? 0x3a3a3a : undefined, face: faceTraits(`ennemi:${seed}`, look, female, 35) });
       h.setWeapon(def.weapon === 'e_club' ? 'cle' : def.weapon === 'e_rifle' ? 'fusil_precision' : def.weapon === 'e_shotgun' ? 'fusil_pompe' : def.weapon === 'e_pistol' ? 'revolver' : def.weapon === 'e_molotov' ? null : null);
       this.model = h;
     } else {

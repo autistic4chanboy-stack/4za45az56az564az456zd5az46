@@ -256,10 +256,10 @@ export class GeoBuilder {
     return this.cyl(0, r, h, x, y, z, color, opts);
   }
 
-  sphere(r: number, x: number, y: number, z: number, color: ColorLike, opts?: PartOpts & { detail?: number; sy?: number }): this {
+  sphere(r: number, x: number, y: number, z: number, color: ColorLike, opts?: PartOpts & { detail?: number; sx?: number; sy?: number; sz?: number }): this {
     const detail = opts?.detail ?? 0;
     const base = getBase(`ico:${detail}`, () => new THREE.IcosahedronGeometry(1, detail));
-    this.push(base, this.matrix(x, y, z, r, r * (opts?.sy ?? 1), r, opts), color, opts, 2);
+    this.push(base, this.matrix(x, y, z, r * (opts?.sx ?? 1), r * (opts?.sy ?? 1), r * (opts?.sz ?? 1), opts), color, opts, 2);
     return this;
   }
 
@@ -413,6 +413,8 @@ export class GeoBuilder {
 /** Matériaux partagés (ombrage toon, voir toon.ts). */
 export const Materials = {
   vc: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })),
+  /** Ombrage lissé (personnages) : modelé continu sur les volumes arrondis. */
+  vcSmooth: toonify(new THREE.MeshLambertMaterial({ vertexColors: true }), { snow: false }),
   /** Variante à motifs procéduraux (planches, briques, tuiles…) pour les géométries portant aPat. */
   vcPat: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { pattern: true }),
   /** Pièces mobiles instanciées (couleur par instance, motifs et surfaces lumineuses). */

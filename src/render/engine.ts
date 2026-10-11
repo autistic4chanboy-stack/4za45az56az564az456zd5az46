@@ -51,6 +51,8 @@ export class CameraRig {
   lowW = 320;
   lowH = 180;
   texelCss = 3;
+  /** Calage sur la grille des texels (pixel art) ; en haute définition la caméra glisse librement. */
+  snapTexels = true;
 
   constructor(readonly camera: THREE.OrthographicCamera) {}
 
@@ -92,10 +94,12 @@ export class CameraRig {
     const tU = this.smoothTarget.dot(this.up) / px;
     const sR = Math.round(tR);
     const sU = Math.round(tU);
-    this.tmp.copy(this.smoothTarget).addScaledVector(this.right, (sR - tR) * px).addScaledVector(this.up, (sU - tU) * px);
-    cam.position.copy(this.tmp).addScaledVector(this.dir, CAM_DIST);
     this.gridPos.set(sR, sU);
-    this.offset.set(tR - sR, tU - sU);
+    if (this.snapTexels) {
+      this.tmp.copy(this.smoothTarget).addScaledVector(this.right, (sR - tR) * px).addScaledVector(this.up, (sU - tU) * px);
+      cam.position.copy(this.tmp).addScaledVector(this.dir, CAM_DIST);
+      this.offset.set(tR - sR, tU - sU);
+    } else this.offset.set(0, 0);
     if (this.shakeAmt > 0.001) {
       this.shakeTime += dt * 40;
       const s = this.shakeAmt * this.shakeAmt * 9;
@@ -359,6 +363,10 @@ export class Engine {
     this.rig.lowW = this.pixel.lowW;
     this.rig.lowH = this.pixel.lowH;
     this.rig.texelCss = this.pixel.scale / this.renderer.getPixelRatio();
+    this.rig.snapTexels = !this.pixel.hd;
+    toonUniforms.uToonSoft.value = this.pixel.hd ? 1 : 0;
+    // ombres : pénombre douce en haute définition, bord franc en pixel art
+    this.sun.shadow.radius = this.pixel.hd ? 2.6 : 1;
   }
 
   /** Ambiance : jour/nuit, météo, brouillard, teinte des zones dangereuses. */

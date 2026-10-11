@@ -125,7 +125,11 @@ export class Game implements CombatHost {
     this.audio.applyVolumes();
     // réglages du rendu pixel ; la qualité (recompilation des matériaux) n'est réappliquée que si elle change
     const px = this.engine.pixel.settings;
-    const resize = px.pixelSize !== s.pixelSize;
+    const resize = px.pixelSize !== s.pixelSize || px.style !== s.style || px.resolution !== s.resolution;
+    px.style = s.style;
+    px.resolution = s.resolution;
+    // l'interface suit le style graphique (cadres crantés et polices pixel, ou habillage lisse)
+    document.documentElement.classList.toggle('pixel-ui', s.style === 'pixel');
     px.pixelSize = s.pixelSize;
     px.palette = s.palette;
     px.outlines = s.outlines;

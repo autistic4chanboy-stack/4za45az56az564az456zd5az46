@@ -176,20 +176,30 @@ export function renderOptions(ui: UI, game: Game, inner: HTMLElement, back: () =
     for (const q of ['basse', 'moyenne', 'haute'] as const) quality.append(btn(q, () => { s.quality = q; game.applySettings(); renderQ(); }, s.quality === q ? 'active' : ''));
   };
   renderQ();
-  const pixels = h('div', { class: 'choice' });
-  const renderPx = () => {
-    clear(pixels);
-    const sizes: [number, string][] = [[0, 'auto'], [2, 'fins'], [3, 'moyens'], [4, 'gros'], [5, 'énormes']];
-    for (const [v, label] of sizes) pixels.append(btn(label, () => { s.pixelSize = v; game.applySettings(); renderPx(); }, s.pixelSize === v ? 'active small' : 'small'));
+  // style graphique ; les réglages propres à chaque style n'apparaissent que pour lui
+  const styleRow = h('div', { class: 'choice' });
+  const styleOpts = h('div', { class: 'stack' });
+  const renderStyle = () => {
+    clear(styleRow);
+    const styles: [Settings['style'], string][] = [['hd', 'Haute définition'], ['pixel', 'Pixel art']];
+    for (const [v, label] of styles) styleRow.append(btn(label, () => { s.style = v; game.applySettings(); renderStyle(); }, s.style === v ? 'active' : ''));
+    clear(styleOpts);
+    if (s.style === 'hd') {
+      const res = h('div', { class: 'choice' });
+      const levels: [number, string][] = [[1, '100 %'], [0.85, '85 %'], [0.7, '70 %'], [0.55, '55 %']];
+      for (const [v, label] of levels) res.append(btn(label, () => { s.resolution = v; game.applySettings(); renderStyle(); }, s.resolution === v ? 'active small' : 'small'));
+      styleOpts.append(h('div', { class: 'small muted' }, 'Résolution de rendu (baissez-la si le jeu rame)'), res);
+    } else {
+      const pixels = h('div', { class: 'choice' });
+      const sizes: [number, string][] = [[0, 'auto'], [2, 'fins'], [3, 'moyens'], [4, 'gros'], [5, 'énormes']];
+      for (const [v, label] of sizes) pixels.append(btn(label, () => { s.pixelSize = v; game.applySettings(); renderStyle(); }, s.pixelSize === v ? 'active small' : 'small'));
+      const palette = h('div', { class: 'choice' });
+      const modes: [Settings['palette'], string][] = [['paliers', 'Paliers (DA)'], ['stricte', 'Palette tramée'], ['aucune', 'Couleurs libres']];
+      for (const [v, label] of modes) palette.append(btn(label, () => { s.palette = v; game.applySettings(); renderStyle(); }, s.palette === v ? 'active small' : 'small'));
+      styleOpts.append(h('div', { class: 'small muted' }, 'Taille des pixels'), pixels, h('div', { class: 'small muted' }, 'Couleurs'), palette);
+    }
   };
-  renderPx();
-  const palette = h('div', { class: 'choice' });
-  const renderPal = () => {
-    clear(palette);
-    const modes: [Settings['palette'], string][] = [['paliers', 'Paliers (DA)'], ['stricte', 'Palette tramée'], ['aucune', 'Couleurs libres']];
-    for (const [v, label] of modes) palette.append(btn(label, () => { s.palette = v; game.applySettings(); renderPal(); }, s.palette === v ? 'active small' : 'small'));
-  };
-  renderPal();
+  renderStyle();
   const toggle = (label: string, key: 'shadows' | 'showFps' | 'screenShake' | 'tutorial' | 'outlines' | 'bloom') => {
     const b = btn(`${label} : ${s[key] ? 'oui' : 'non'}`, () => {
       s[key] = !s[key];
@@ -205,10 +215,9 @@ export function renderOptions(ui: UI, game: Game, inner: HTMLElement, back: () =
     slider('Musique', 'music'),
     slider('Ambiance', 'ambient'),
     h('div', { class: 'small muted' }, 'Qualité graphique'), quality,
-    h('div', { class: 'small muted' }, 'Taille des pixels'), pixels,
-    h('div', { class: 'small muted' }, 'Couleurs'), palette,
-    h('div', { class: 'row wrap' }, toggle('Contours', 'outlines'), toggle('Halos lumineux', 'bloom'), toggle('Ombres', 'shadows')),
-    h('div', { class: 'row wrap' }, toggle('Secousses', 'screenShake'), toggle('Afficher les i/s', 'showFps'), toggle('Astuces', 'tutorial')),
+    h('div', { class: 'small muted' }, 'Style graphique'), styleRow,
+    styleOpts,
+    h('div', { class: 'opt-toggles' }, toggle('Contours', 'outlines'), toggle('Halos lumineux', 'bloom'), toggle('Ombres', 'shadows'), toggle('Secousses', 'screenShake'), toggle('Afficher les i/s', 'showFps'), toggle('Astuces', 'tutorial')),
     btn('Retour', back),
   );
 }

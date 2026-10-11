@@ -118,17 +118,19 @@ Trois niveaux de difficulté : Voyageur, Convoyeur et Damné du Rail.
 
 ### Direction artistique : « Rouille et braises »
 
-Un monde de cendre froide traversé par la chaleur des lampes, du charbon et de la rouille, rendu en **pixel art 3D** :
+Un monde de cendre froide traversé par la chaleur des lampes, du charbon et de la rouille, rendu par défaut en **haute définition** :
 
-- la scène est rendue en basse résolution puis agrandie au pixel près, avec une caméra orthographique calée sur la grille de texels (aucun scintillement, défilement fluide) ;
-- un post-traitement maison ajoute les contours, les reflets d'arêtes, les halos lumineux, l'étalonnage de chaque heure du jour et une postérisation des couleurs (ou, en option, la palette stricte de la DA avec tramage) ;
-- les matériaux sont des shaders « toon » : terminateur net, ombres franches, ombres de nuages qui dérivent, neige qui tient sur ce qui regarde le ciel, feuillage au vent, eau animée ;
-- murs, toits et sols sont décorés par des motifs procéduraux calculés dans le shader (planches, briques, moellons, béton, tôle ondulée, tuiles, bardeaux, pavés…), nets au texel près et sans texture ;
+- rendu à la résolution de l'écran (plafonné sur les très grands écrans), anticrénelage, contours adoucis et ombres douces ;
+- un post-traitement maison ajoute les contours, les reflets d'arêtes, les halos lumineux et l'étalonnage de chaque heure du jour ;
+- les matériaux sont des shaders « toon » à dégradés doux : ombres de nuages qui dérivent, neige qui tient sur ce qui regarde le ciel, feuillage au vent, eau animée ;
+- murs, toits et sols sont décorés par des motifs procéduraux calculés dans le shader (planches, briques, moellons, béton, tôle ondulée, tuiles, bardeaux, pavés…), sans texture ;
 - les vitres reflètent le ciel le jour et s'allument la nuit ; les cheminées fument ;
-- météo en pixels : pluie en traits fins et éclaboussures, flocons, cendres et braises, tempête de sable, orages avec éclairs, nappes de brume au ras du sol ;
-- interface en police pixel, cadres crantés et jauges segmentées.
+- météo : pluie et éclaboussures, flocons, cendres et braises, tempête de sable, orages avec éclairs, nappes de brume au ras du sol ;
+- personnages modelés en volumes arrondis, avec un visage propre à chacun (barbe, yeux, lunettes, cicatrices…) ;
+- **portraits illustrés** dans les dialogues : chaque personnage est peint en SVG (buste, tenue de son métier, coiffure, expression selon son caractère et son moral, pâleur s'il est malade) dans un cadre de laiton ; pendant qu'il parle, le texte s'écrit, sa bouche bouge au rythme des syllabes, il cligne des yeux et détourne parfois le regard ;
+- interface lisse : polices Oswald, Barlow et Lora, panneaux vitrés et cadres dorés.
 
-Les **Options** permettent de choisir la taille des pixels, le rendu des couleurs (paliers, palette tramée ou couleurs libres), les contours, les halos, les ombres et la qualité.
+Les **Options** permettent de régler la résolution de rendu, les contours, les halos, les ombres et la qualité, ou de revenir au style **Pixel art** d'origine (rendu basse résolution, palette de la DA, interface pixel).
 
 ---
 
@@ -137,7 +139,7 @@ Les **Options** permettent de choisir la taille des pixels, le rendu des couleur
 ```
 src/
   core/      RNG déterministe, maths, bruit, entrées (AZERTY/QWERTY), audio procédural (WebAudio)
-  render/    moteur three.js, pipeline pixel art, shaders toon et motifs, terrain, météo, particules, modèles
+  render/    moteur three.js, pipeline de rendu (HD ou pixel art), shaders toon et motifs, terrain, météo, particules, modèles
   data/      données de jeu : objets, armes, wagons, ennemis, biomes, gares, PNJ, équilibrage
   state/     état sérialisable, nouvelle partie, sauvegarde (localStorage + export JSON)
   world/     cartes (Histoire et Infini), génération des 21 types de gares (quartiers, remparts, intérieurs, mobilier), collisions, butin
@@ -152,6 +154,7 @@ Notes techniques :
 
 - Le train reste à l'origine du monde ; en voyage, c'est le décor qui défile. Il est généré par tronçons selon le biome traversé.
 - Le décor statique est fusionné en quelques maillages à couleurs de sommets ; un attribut par sommet choisit le motif procédural dessiné par le shader. Herbes et fleurs sont instanciées, les particules utilisent des billboards instanciés et l'éclairage dynamique passe par un pool fixe de lumières.
-- Rendu : `render/pixel.ts` (cible basse résolution, contours, halos, étalonnage, palette), `render/toon.ts` (éclairage stylisé, motifs, vitres), `render/palette.ts` (palette de la DA).
+- Rendu : `render/pixel.ts` (cible HD ou basse résolution, contours, halos, étalonnage, anticrénelage, palette), `render/toon.ts` (éclairage stylisé, motifs, vitres), `render/palette.ts` (palette de la DA).
+- Portraits : `ui/portraitArt.ts` génère le SVG (calques de bouche, de paupières et d'iris animés par `ui/dialoguePanel.ts`) ; les traits du visage viennent de `data/faces.ts`, partagés avec le modèle 3D.
 - 1 seconde réelle = 1 minute de jeu.
 - Le plugin Vite `inlineSingleFile` (dans `vite.config.ts`) intègre JS et CSS au HTML final.

@@ -97,7 +97,11 @@ export interface Settings {
   showFps: boolean;
   tutorial: boolean;
   screenShake: boolean;
-  /** Taille d'un pixel artistique (0 = automatique). */
+  /** Style graphique : haute définition lissée ou pixel art. */
+  style: 'hd' | 'pixel';
+  /** Haute définition : fraction de la résolution de l'écran (1 = pleine). */
+  resolution: number;
+  /** Pixel art : taille d'un pixel artistique (0 = automatique). */
   pixelSize: number;
   /** Rendu des couleurs : paliers (DA), palette stricte tramée, ou couleurs libres. */
   palette: 'paliers' | 'stricte' | 'aucune';
@@ -108,7 +112,7 @@ export interface Settings {
 const SETTINGS_KEY = 'rdc_settings_v1';
 
 export function loadSettings(): Settings {
-  const def: Settings = { master: 0.8, sfx: 0.9, music: 0.4, ambient: 0.6, quality: 'haute', shadows: true, showFps: false, tutorial: true, screenShake: true, pixelSize: 0, palette: 'paliers', outlines: true, bloom: true };
+  const def: Settings = { master: 0.8, sfx: 0.9, music: 0.4, ambient: 0.6, quality: 'haute', shadows: true, showFps: false, tutorial: true, screenShake: true, style: 'hd', resolution: 1, pixelSize: 0, palette: 'paliers', outlines: true, bloom: true };
   try {
     const raw = storage()?.getItem(SETTINGS_KEY);
     if (raw) return { ...def, ...JSON.parse(raw) };

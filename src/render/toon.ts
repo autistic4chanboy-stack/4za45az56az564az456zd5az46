@@ -30,6 +30,8 @@ export const toonUniforms = {
   uNightGlow: { value: 0 },
   /** Couleur du ciel (reflets des vitres). */
   uSkyTint: { value: new THREE.Color(0x8aa0b8) },
+  /** 0 = ombrage en paliers francs (pixel art), 1 = modelé doux (haute définition). */
+  uToonSoft: { value: 1 },
 };
 
 /**
@@ -95,6 +97,7 @@ uniform float uLightBands;
 uniform float uSand;
 uniform float uNightGlow;
 uniform vec3 uSkyTint;
+uniform float uToonSoft;
 varying vec3 vTWorld;
 varying vec3 vTLocal;
 float toonSunShadow = 1.0;
@@ -299,11 +302,15 @@ struct LambertMaterial {
 // Soleil : terminateur net, deux paliers, ombres portées franches, nuages.
 void RE_Direct_Sun( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in LambertMaterial material, inout ReflectedLight reflectedLight ) {
   float ndl = dot( geometryNormal, directLight.direction );
-  float lit = smoothstep( -0.03, 0.05, ndl );
-  // trois paliers : face au soleil, de biais, rasante
+  float soft = uToonSoft;
+  float lit = smoothstep( -0.03 - 0.1 * soft, 0.05 + 0.16 * soft, ndl );
+  // pixel art : trois paliers (face au soleil, de biais, rasante) ; HD : modelé continu, à peine marqué
   float form = mix( 0.7, 0.86, smoothstep( 0.3, 0.38, ndl ) );
   form = mix( form, 1.0, smoothstep( 0.66, 0.74, ndl ) );
-  float sh = smoothstep( 0.4, 0.6, toonSunShadow );
+  float formSoft = 0.66 + 0.2 * smoothstep( 0.05, 0.45, ndl ) + 0.14 * smoothstep( 0.4, 0.85, ndl );
+  form = mix( form, formSoft, soft );
+  // ombres portées : bord franc ou pénombre filtrée
+  float sh = mix( smoothstep( 0.4, 0.6, toonSunShadow ), smoothstep( 0.02, 0.98, toonSunShadow ), soft );
   float k = lit * sh * toonCloud( vTWorld.xz ) * form;
   reflectedLight.directDiffuse += directLight.color * k * BRDF_Lambert( material.diffuseColor );
 }
@@ -315,7 +322,7 @@ void RE_Direct_Toon( const in IncidentLight directLight, const in vec3 geometryP
   vec3 c = directLight.color * wrap;
   float l = max( max( c.r, c.g ), c.b );
   float q = floor( l * uLightBands + 0.35 ) / uLightBands;
-  c *= q / max( l, 1e-4 );
+  c *= mix( q, l, uToonSoft ) / max( l, 1e-4 );
   reflectedLight.directDiffuse += c * BRDF_Lambert( material.diffuseColor );
 }
 
@@ -450,7 +457,10 @@ vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
     vec2 cell = floor( gp * 7.0 );
     float h = tHash( cell );
     float g = 1.0 + ( big - 0.5 ) * 0.12 + ( mid - 0.5 ) * 0.08;
-    g += step( 0.88, h ) * 0.09 - step( h, 0.08 ) * 0.09;
+    // pixel art : mouchetures au texel ; HD : grain continu (pas de petits carrés)
+    float speck = step( 0.88, h ) * 0.09 - step( h, 0.08 ) * 0.09;
+    float fine = ( tNoise( gp * 4.3 + 1.7 ) - 0.5 ) * 0.1 + ( tNoise( gp * 11.0 + 5.1 ) - 0.5 ) * 0.06;
+    g += mix( speck, fine, uToonSoft );
     if ( uSand > 0.0 ) {
       // rides de sable sinueuses : crête claire, creux ombré
       float wv = gp.x * 0.85 + gp.y * 0.3 + tNoise( gp * 0.12 ) * 4.5;
@@ -472,6 +482,8 @@ vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
     float ripple = step( 0.68, band );
     float trough = step( band, 0.3 );
     float sparkle = step( 0.975, tHash( floor( wp * 5.0 ) + floor( t * 2.5 ) ) );
+    // HD : reflets ronds plutôt que carrés
+    sparkle *= mix( 1.0, 1.0 - smoothstep( 0.12, 0.3, length( fract( wp * 5.0 ) - 0.5 ) ), uToonSoft );
     diffuseColor.rgb *= 1.0 - trough * 0.16;
     diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * 1.5 + vec3( 0.05, 0.07, 0.08 ), ripple * 0.75 );
     diffuseColor.rgb += sparkle * vec3( 0.45, 0.5, 0.5 );

@@ -1,3 +1,4 @@
+import { faceTraits } from '../data/faces';
 import { Humanoid } from '../render/humanoid';
 import { PERSONALITIES, BARKS } from '../data/npcs';
 import { WEAPONS } from '../data/weapons';
@@ -58,7 +59,7 @@ export class NpcActor implements Actor {
 
   constructor(private game: Game, public data: NpcState) {
     this.id = data.id;
-    this.model = new Humanoid(data.look);
+    this.model = new Humanoid(data.look, { face: faceTraits(data.id, data.look, data.female, data.age) });
     this.model.setWeapon(null);
     game.scene.add(this.model.root);
     this.refreshFaction();

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toonUniforms } from './toon';
 
 /**
  * Système de particules instancié (billboards) : une draw call par système.
@@ -49,21 +50,31 @@ varying vec4 vColor;
 varying vec2 vUv;
 uniform float uSoft;
 uniform float uAdd;
+uniform float uSmooth;
 #include <fog_pars_fragment>
 void main() {
-  // style pixel : disque net, volumes en deux tons, transparence en paliers
   vec2 q = vUv - 0.5;
   float d = length(q) * 2.0;
   if (d > 1.0) discard;
   vec3 col = vColor.rgb;
   float a = vColor.a;
-  if (uAdd > 0.5) {
-    a *= d < 0.42 ? 1.0 : d < 0.74 ? 0.5 : 0.16;
+  if (uSmooth > 0.5) {
+    // haute définition : volutes fondues, modelé léger
+    if (uAdd > 0.5) a *= pow(1.0 - d, 1.7);
+    else {
+      col *= 0.84 + 0.16 * smoothstep(0.45, -0.45, q.y + q.x * 0.35);
+      a *= 1.0 - smoothstep(uSoft * 0.6, 1.0, d);
+    }
   } else {
-    col *= q.y + q.x * 0.35 < -0.1 ? 0.8 : 1.0;
-    a *= d < uSoft + 0.3 ? 1.0 : 0.55;
+    // pixel art : disque net, volumes en deux tons, transparence en paliers
+    if (uAdd > 0.5) {
+      a *= d < 0.42 ? 1.0 : d < 0.74 ? 0.5 : 0.16;
+    } else {
+      col *= q.y + q.x * 0.35 < -0.1 ? 0.8 : 1.0;
+      a *= d < uSoft + 0.3 ? 1.0 : 0.55;
+    }
+    a = floor(a * 5.0 + 0.5) / 5.0;
   }
-  a = floor(a * 5.0 + 0.5) / 5.0;
   if (a < 0.01) discard;
   gl_FragColor = vec4(col, min(a, 1.0));
   #include <colorspace_fragment>
@@ -110,7 +121,7 @@ export class ParticleSystem {
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uSoft: { value: soft }, uAdd: { value: additive ? 1 : 0 } }]),
+      uniforms: { ...THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uSoft: { value: soft }, uAdd: { value: additive ? 1 : 0 } }]), uSmooth: toonUniforms.uToonSoft },
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,

@@ -2,22 +2,31 @@ import * as THREE from 'three';
 import { buildPaletteLut, LUT_SIZE } from './palette';
 
 /**
- * Rendu « pixel art 3D » :
- * 1. la scène est rendue en basse résolution (avec une marge de quelques texels) ;
- * 2. une passe détecte les contours (profondeur) et les arêtes saillantes (normales
- *    reconstruites depuis la profondeur), ajoute un halo lumineux, étalonne les couleurs,
- *    puis les ramène sur la palette de la DA avec un tramage ordonné ;
- * 3. l'image est agrandie au pixel près, décalée de la fraction de texel de la caméra
- *    pour un défilement fluide sans scintillement.
+ * Chaîne de rendu, en deux styles :
+ * - « haute définition » (par défaut) : la scène est rendue à la résolution de l'écran,
+ *   contours fins détectés sur la profondeur, halo doux, étalonnage, puis anticrénelage FXAA ;
+ * - « pixel art » : rendu en basse résolution, contours épais, couleurs ramenées sur la
+ *   palette de la DA (tramage ordonné), agrandissement au pixel près, décalé de la fraction
+ *   de texel de la caméra pour un défilement sans scintillement.
+ * Dans les deux cas :
+ * 1. la scène est rendue avec une marge de quelques texels (secousses, décalage sous-texel) ;
+ * 2. une passe détecte les contours et les arêtes saillantes (normales reconstruites depuis
+ *    la profondeur), ajoute le halo des lumières et étalonne les couleurs ;
+ * 3. l'image est ramenée à l'écran.
  */
 
+export type RenderStyle = 'hd' | 'pixel';
+
 export interface PixelSettings {
-  /** Taille d'un pixel artistique en pixels physiques (0 = automatique). */
+  style: RenderStyle;
+  /** Pixel art : taille d'un pixel artistique en pixels physiques (0 = automatique). */
   pixelSize: number;
-  /** 'paliers' : postérisation perceptuelle ; 'stricte' : palette de la DA ; 'aucune'. */
+  /** Pixel art : 'paliers' (postérisation perceptuelle), 'stricte' (palette de la DA) ou 'aucune'. */
   palette: 'paliers' | 'stricte' | 'aucune';
   outlines: boolean;
   bloom: boolean;
+  /** Haute définition : fraction de la résolution native rendue (1 = pleine). */
+  resolution: number;
 }
 
 export interface Grading {
@@ -65,6 +74,8 @@ uniform float uPalette;
 uniform float uDither;
 uniform vec2 uDitherOrigin;
 uniform vec3 uFlash;
+uniform float uHD;
+uniform int uEdge;
 varying vec2 vUv;
 
 float linD( ivec2 p ) {
@@ -132,18 +143,20 @@ void main() {
   if ( uOutline > 0.0 || uHighlight > 0.0 ) {
     float d = linD( p );
     if ( d < uFar * 0.995 ) {
-      float dU = linD( p + ivec2( 0, 1 ) );
-      float dD = linD( p - ivec2( 0, 1 ) );
-      float dL = linD( p - ivec2( 1, 0 ) );
-      float dR = linD( p + ivec2( 1, 0 ) );
+      ivec2 ex = ivec2( uEdge, 0 );
+      ivec2 ey = ivec2( 0, uEdge );
+      float dU = linD( p + ey );
+      float dD = linD( p - ey );
+      float dL = linD( p - ex );
+      float dR = linD( p + ex );
       float depthDiff = clamp( dU - d, 0.0, 2.0 ) + clamp( dD - d, 0.0, 2.0 ) + clamp( dL - d, 0.0, 2.0 ) + clamp( dR - d, 0.0, 2.0 );
-      float depthEdge = step( uDepthThresh, depthDiff );
-      if ( depthEdge > 0.0 ) {
-        col = mix( col, col * 0.28 + uOutlineTint, uOutline );
-      } else if ( uHighlight > 0.0 ) {
+      // pixel art : trait franc ; haute définition : trait fondu, que l'anticrénelage achève de lisser
+      float depthEdge = uHD > 0.5 ? smoothstep( uDepthThresh * 0.45, uDepthThresh * 1.6, depthDiff ) : step( uDepthThresh, depthDiff );
+      if ( depthEdge > 0.0 ) col = mix( col, col * 0.28 + uOutlineTint, uOutline * depthEdge );
+      if ( uHighlight > 0.0 && depthEdge < 1.0 ) {
         vec3 n = normalAt( p );
-        float ne = normalEdge( n, p + ivec2( 0, 1 ), d ) + normalEdge( n, p - ivec2( 0, 1 ), d ) + normalEdge( n, p + ivec2( 1, 0 ), d ) + normalEdge( n, p - ivec2( 1, 0 ), d );
-        col *= 1.0 + uHighlight * smoothstep( 0.18, 0.4, ne );
+        float ne = normalEdge( n, p + ey, d ) + normalEdge( n, p - ey, d ) + normalEdge( n, p + ex, d ) + normalEdge( n, p - ex, d );
+        col *= 1.0 + uHighlight * smoothstep( 0.18, 0.4, ne ) * ( 1.0 - depthEdge );
       }
     }
   }
@@ -219,14 +232,53 @@ uniform sampler2D tPost;
 uniform vec2 uOffset;
 uniform float uScale;
 uniform float uMargin;
+uniform vec2 uPostSize;
+uniform float uHD;
+
+// FXAA (approche « lite » de T. Lottes) : adoucit les arêtes sans flouter les aplats
+vec3 fxaa( vec2 uv, vec2 rcp ) {
+  vec3 rgbNW = texture2D( tPost, uv + vec2( -1.0, -1.0 ) * rcp ).rgb;
+  vec3 rgbNE = texture2D( tPost, uv + vec2( 1.0, -1.0 ) * rcp ).rgb;
+  vec3 rgbSW = texture2D( tPost, uv + vec2( -1.0, 1.0 ) * rcp ).rgb;
+  vec3 rgbSE = texture2D( tPost, uv + vec2( 1.0, 1.0 ) * rcp ).rgb;
+  vec3 rgbM = texture2D( tPost, uv ).rgb;
+  vec3 lw = vec3( 0.299, 0.587, 0.114 );
+  float lNW = dot( rgbNW, lw );
+  float lNE = dot( rgbNE, lw );
+  float lSW = dot( rgbSW, lw );
+  float lSE = dot( rgbSE, lw );
+  float lM = dot( rgbM, lw );
+  float lMin = min( lM, min( min( lNW, lNE ), min( lSW, lSE ) ) );
+  float lMax = max( lM, max( max( lNW, lNE ), max( lSW, lSE ) ) );
+  if ( lMax - lMin < max( 0.0312, lMax * 0.125 ) ) return rgbM;
+  vec2 dir = vec2( -( ( lNW + lNE ) - ( lSW + lSE ) ), ( lNW + lSW ) - ( lNE + lSE ) );
+  float reduce = max( ( lNW + lNE + lSW + lSE ) * 0.03125, 1.0 / 128.0 );
+  float rcpMin = 1.0 / ( min( abs( dir.x ), abs( dir.y ) ) + reduce );
+  dir = clamp( dir * rcpMin, vec2( -8.0 ), vec2( 8.0 ) ) * rcp;
+  vec3 a = 0.5 * ( texture2D( tPost, uv + dir * ( 1.0 / 3.0 - 0.5 ) ).rgb + texture2D( tPost, uv + dir * ( 2.0 / 3.0 - 0.5 ) ).rgb );
+  vec3 b = a * 0.5 + 0.25 * ( texture2D( tPost, uv - dir * 0.5 ).rgb + texture2D( tPost, uv + dir * 0.5 ).rgb );
+  float lB = dot( b, lw );
+  return ( lB < lMin || lB > lMax ) ? a : b;
+}
+
 void main() {
   vec2 q = gl_FragCoord.xy / uScale + uMargin + uOffset;
-  gl_FragColor = texelFetch( tPost, ivec2( floor( q ) ), 0 );
+  if ( uHD > 0.5 ) {
+    vec2 rcp = 1.0 / uPostSize;
+    gl_FragColor = vec4( fxaa( q * rcp, rcp ), 1.0 );
+  } else {
+    gl_FragColor = texelFetch( tPost, ivec2( floor( q ) ), 0 );
+  }
 }
 `;
 
+/** Plafond de pixels rendus en haute définition (au-delà, le gain ne vaut pas le coût). */
+const HD_MAX_PIXELS = 3.8e6;
+
 export class PixelPipeline {
-  settings: PixelSettings = { pixelSize: 0, palette: 'paliers', outlines: true, bloom: true };
+  settings: PixelSettings = { style: 'hd', pixelSize: 0, palette: 'paliers', outlines: true, bloom: true, resolution: 1 };
+  /** Style effectivement appliqué au dernier redimensionnement. */
+  private appliedStyle: RenderStyle | null = null;
   readonly grading: Grading = {
     lift: new THREE.Color(0.018, 0.012, 0.045),
     gain: new THREE.Color(1, 1, 1),
@@ -305,6 +357,8 @@ export class PixelPipeline {
         uDither: { value: 0.0 },
         uDitherOrigin: { value: new THREE.Vector2() },
         uFlash: { value: this.flash },
+        uHD: { value: 1 },
+        uEdge: { value: 1 },
       },
       depthTest: false,
       depthWrite: false,
@@ -326,7 +380,7 @@ export class PixelPipeline {
     this.upMat = new THREE.ShaderMaterial({
       vertexShader: FS_VERT,
       fragmentShader: UP_FRAG,
-      uniforms: { tPost: { value: this.rtPost.texture }, uOffset: { value: new THREE.Vector2() }, uScale: { value: 3 }, uMargin: { value: PIXEL_MARGIN } },
+      uniforms: { tPost: { value: this.rtPost.texture }, uOffset: { value: new THREE.Vector2() }, uScale: { value: 3 }, uMargin: { value: PIXEL_MARGIN }, uPostSize: { value: new THREE.Vector2(4, 4) }, uHD: { value: 1 } },
       depthTest: false,
       depthWrite: false,
     });
@@ -335,22 +389,48 @@ export class PixelPipeline {
     this.fsScene.add(this.quad);
   }
 
-  /** Recalcule la résolution basse selon la taille de l'écran (pixels physiques). */
+  get hd(): boolean {
+    return this.settings.style === 'hd';
+  }
+
+  /** Recalcule la résolution de rendu selon la taille de l'écran (pixels physiques). */
   resize(devW: number, devH: number): void {
-    const auto = Math.max(2, Math.round(devH / 250));
-    this.scale = this.settings.pixelSize > 0 ? this.settings.pixelSize : auto;
+    const hd = this.hd;
+    if (hd) {
+      // pleine résolution (ou une fraction), plafonnée pour les très grands écrans
+      const res = Math.min(1, Math.max(0.4, this.settings.resolution), Math.sqrt(HD_MAX_PIXELS / Math.max(1, devW * devH)));
+      this.scale = 1 / res;
+    } else {
+      const auto = Math.max(2, Math.round(devH / 250));
+      this.scale = this.settings.pixelSize > 0 ? this.settings.pixelSize : auto;
+    }
     this.lowW = Math.ceil(devW / this.scale);
     this.lowH = Math.ceil(devH / this.scale);
     const w = this.lowW + PIXEL_MARGIN * 2;
     const h = this.lowH + PIXEL_MARGIN * 2;
     this.rtScene.setSize(w, h);
+    if (this.appliedStyle !== this.settings.style) {
+      // le filtrage de l'image finale dépend du style : on recrée la cible
+      this.appliedStyle = this.settings.style;
+      this.rtPost.dispose();
+      const f = hd ? THREE.LinearFilter : THREE.NearestFilter;
+      this.rtPost = new THREE.WebGLRenderTarget(w, h, { minFilter: f, magFilter: f, depthBuffer: false });
+      this.upMat.uniforms.tPost.value = this.rtPost.texture;
+    }
     this.rtPost.setSize(w, h);
-    const bw = Math.max(1, Math.ceil(w / 2));
-    const bh = Math.max(1, Math.ceil(h / 2));
+    // halo : quart de résolution en HD (plus large et plus doux), moitié en pixel art
+    const div = hd ? 4 : 2;
+    const bw = Math.max(1, Math.ceil(w / div));
+    const bh = Math.max(1, Math.ceil(h / div));
     this.rtBloomA.setSize(bw, bh);
     this.rtBloomB.setSize(bw, bh);
     this.postMat.uniforms.uSize.value.set(w, h);
+    this.postMat.uniforms.uHD.value = hd ? 1 : 0;
+    // contours d'environ un pixel CSS, quelle que soit la densité de l'écran
+    this.postMat.uniforms.uEdge.value = hd ? Math.max(1, Math.round(this.lowH / 1100)) : 1;
     this.upMat.uniforms.uScale.value = this.scale;
+    this.upMat.uniforms.uPostSize.value.set(w, h);
+    this.upMat.uniforms.uHD.value = hd ? 1 : 0;
   }
 
   /** Taille totale (texels) de la cible de rendu, marge comprise. */
@@ -384,12 +464,16 @@ export class PixelPipeline {
       this.pass(renderer, this.brightMat, this.rtBloomA);
       const bw = this.rtBloomA.width;
       const bh = this.rtBloomA.height;
-      this.blurMat.uniforms.tInput.value = this.rtBloomA.texture;
-      this.blurMat.uniforms.uDir.value.set(1 / bw, 0);
-      this.pass(renderer, this.blurMat, this.rtBloomB);
-      this.blurMat.uniforms.tInput.value = this.rtBloomB.texture;
-      this.blurMat.uniforms.uDir.value.set(0, 1 / bh);
-      this.pass(renderer, this.blurMat, this.rtBloomA);
+      // deux passes de flou en HD : un halo large et doux
+      for (let i = 0; i < (this.hd ? 2 : 1); i++) {
+        const k = 1 + i * 1.5;
+        this.blurMat.uniforms.tInput.value = this.rtBloomA.texture;
+        this.blurMat.uniforms.uDir.value.set(k / bw, 0);
+        this.pass(renderer, this.blurMat, this.rtBloomB);
+        this.blurMat.uniforms.tInput.value = this.rtBloomB.texture;
+        this.blurMat.uniforms.uDir.value.set(0, k / bh);
+        this.pass(renderer, this.blurMat, this.rtBloomA);
+      }
     }
 
     const u = this.postMat.uniforms;
@@ -398,13 +482,14 @@ export class PixelPipeline {
     u.uView.value.copy(view);
     u.uNear.value = camera.near;
     u.uFar.value = camera.far;
-    u.uOutline.value = s.outlines ? 0.85 : 0;
-    u.uHighlight.value = s.outlines ? 0.32 : 0;
+    const hd = this.hd;
+    u.uOutline.value = s.outlines ? (hd ? 0.62 : 0.85) : 0;
+    u.uHighlight.value = s.outlines ? (hd ? 0.18 : 0.32) : 0;
     u.uSaturation.value = g.saturation;
     u.uContrast.value = g.contrast;
     u.uVignette.value = g.vignette;
-    u.uPalette.value = s.palette === 'stricte' ? 2 : s.palette === 'paliers' ? 1 : 0;
-    u.uDither.value = s.palette === 'stricte' ? 0.03 : 0.0;
+    u.uPalette.value = hd ? 0 : s.palette === 'stricte' ? 2 : s.palette === 'paliers' ? 1 : 0;
+    u.uDither.value = !hd && s.palette === 'stricte' ? 0.03 : 0.0;
     u.uDitherOrigin.value.set(((ditherOrigin.x % 4) + 4) % 4, ((ditherOrigin.y % 4) + 4) % 4);
     this.pass(renderer, this.postMat, this.rtPost);
 
