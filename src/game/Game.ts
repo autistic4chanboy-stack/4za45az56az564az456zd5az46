@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Engine } from '../render/engine';
+import { Engine, GAME_PITCH } from '../render/engine';
 import { Input } from '../core/input';
 import { Audio } from '../core/audio';
 import { BAL, DIFFICULTIES } from '../data/balance';
@@ -26,6 +26,8 @@ import { Economy } from './economy';
 import { Story } from '../story/story';
 import { UI } from '../ui/UI';
 import { MenuScene } from '../render/menuScene';
+import { WeatherFx, type WeatherFxKind } from '../render/weather';
+import { toonUniforms } from '../render/toon';
 import { createNewGame, emptyStationDelta, type NewGameOptions } from '../state/newGame';
 import { saveGame, deleteSave, loadSettings, saveSettings, type Settings } from '../state/save';
 import { loadMeta, saveMeta, heritageEarned } from '../state/meta';
@@ -414,7 +416,7 @@ export class Game implements CombatHost {
     this.disposeWorld();
     this.engine.rig.setZoom(25, true);
     this.engine.rig.yaw = 0;
-    this.engine.rig.pitch = 0.98;
+    this.engine.rig.pitch = GAME_PITCH;
     this.state = state;
     this.notified.clear();
     this.locoDown = false;
@@ -1080,61 +1082,39 @@ export class Game implements CombatHost {
 
   // ================================================================== météo
 
-  private weatherPts: THREE.Points | null = null;
-  private weatherKind = '';
+  private weatherFx: WeatherFx | null = null;
 
   private updateWeather(dt: number): void {
     const env = this.level?.env;
-    const kind = env ? (env.weather === 'neige' || env.weather === 'tempete' ? 'neige' : env.weather === 'pluie' ? 'pluie' : env.weather === 'cendres' ? 'cendres' : env.weather === 'poussiere' ? 'poussiere' : '') : '';
-    const inside = this.levelDarkness() > 0.5;
-    if (kind !== this.weatherKind) {
-      this.weatherKind = kind;
-      if (this.weatherPts) {
-        this.scene.remove(this.weatherPts);
-        this.weatherPts.geometry.dispose();
-        (this.weatherPts.material as THREE.Material).dispose();
-        this.weatherPts = null;
-      }
-      if (kind) {
-        const n = this.engine.quality === 'basse' ? 600 : env?.weather === 'tempete' ? 2600 : 1500;
-        const pos = new Float32Array(n * 3);
-        for (let i = 0; i < n; i++) {
-          pos[i * 3] = (Math.random() - 0.5) * 90;
-          pos[i * 3 + 1] = Math.random() * 30;
-          pos[i * 3 + 2] = (Math.random() - 0.5) * 70;
-        }
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        const color = kind === 'neige' ? 0xffffff : kind === 'pluie' ? 0x9ab0c8 : kind === 'cendres' ? 0x8a8680 : 0xc8a878;
-        const mat = new THREE.PointsMaterial({ color, size: kind === 'pluie' ? 0.12 : kind === 'neige' ? 0.22 : 0.18, transparent: true, opacity: kind === 'poussiere' ? 0.5 : 0.85, depthWrite: false });
-        this.weatherPts = new THREE.Points(geo, mat);
-        this.weatherPts.frustumCulled = false;
-        this.scene.add(this.weatherPts);
-      }
+    const st = this.state;
+    const winter = st.season === 'hiver' || env?.biome === 'toundra';
+    const w = env?.weather;
+    const kind: WeatherFxKind = !w ? '' : w === 'pluie' ? (winter ? 'neige' : 'pluie') : w === 'neige' ? 'neige' : w === 'tempete' ? (winter ? 'blizzard' : 'orage') : w === 'cendres' ? 'cendres' : w === 'poussiere' ? 'poussiere' : '';
+    if (!this.weatherFx) {
+      this.weatherFx = new WeatherFx(this.scene, this.engine.fx);
+      this.weatherFx.onLightning = (x, z) => {
+        this.engine.pixel.flash.setRGB(0.5, 0.56, 0.68);
+        this.engine.lights.flash(x, 24, z, 0xdfe8ff, 9, 90, 0.28);
+        const delay = 300 + Math.random() * 1400;
+        window.setTimeout(() => this.audio.play('thunder', { volume: 0.8 }), delay);
+      };
     }
-    const pts = this.weatherPts;
-    if (!pts) return;
-    pts.visible = !inside;
-    const arr = pts.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const a = arr.array as Float32Array;
-    const cx = this.player.x;
-    const cz = this.player.z;
-    const fall = kind === 'pluie' ? 22 : kind === 'neige' ? 3 : kind === 'cendres' ? 1.5 : 1;
-    const wind = (kind === 'poussiere' ? 12 : env?.weather === 'tempete' ? 14 : 2) + this.groundSpeed();
-    const t = performance.now() / 1000;
-    for (let i = 0; i < a.length; i += 3) {
-      a[i] -= wind * dt;
-      a[i + 1] -= fall * dt;
-      a[i + 2] += Math.sin(t + i) * 0.3 * dt;
-      if (a[i + 1] < 0) a[i + 1] += 30;
-      const rx = a[i] - cx;
-      if (rx < -45) a[i] += 90;
-      else if (rx > 45) a[i] -= 90;
-      const rz = a[i + 2] - cz;
-      if (rz < -35) a[i + 2] += 70;
-      else if (rz > 35) a[i + 2] -= 70;
-    }
-    arr.needsUpdate = true;
+    const rig = this.engine.rig;
+    const wind = toonUniforms.uWind.value;
+    this.weatherFx.update({
+      dt,
+      kind,
+      cx: rig.target.x,
+      cz: rig.target.z,
+      viewW: rig.view.x,
+      viewH: rig.view.y,
+      pitch: rig.pitch,
+      windX: wind.x * 4,
+      windZ: wind.y * 4,
+      groundSpeed: this.groundSpeed(),
+      hidden: this.levelDarkness() > 0.5,
+      quality: this.engine.quality,
+    });
   }
 
   // ================================================================== interactions

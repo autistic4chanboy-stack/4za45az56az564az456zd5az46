@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GeoBuilder } from './geo';
+import { PAT } from './toon';
 import type { Rng } from '../core/rng';
 
 /** Décors procéduraux ajoutés à un GeoBuilder. Chaque fonction retourne un collisionneur éventuel. */
@@ -313,4 +314,109 @@ export function campfire(g: GeoBuilder, x: number, z: number): PropCollider {
   g.layer('glow').cone(0.3, 0.6, x, 0.4, z, 0xff9a30, { seg: 5 });
   g.layer('base');
   return { kind: 'circle', x, z, r: 0.6 };
+}
+
+/** Tour à charbon : trémie en planches sur tréteaux, goulotte vers la voie, échelle et tas de charbon. */
+export function coalTower(g: GeoBuilder, x: number, z: number, chuteDir: 1 | -1 = -1): void {
+  const wood = 0x5e4632;
+  const dark = 0x3a2c22;
+  // pieds et contreventements
+  for (const [lx, lz] of [[-2.2, -2.2], [2.2, -2.2], [-2.2, 2.2], [2.2, 2.2]]) g.box(0.42, 5.4, 0.42, x + lx, 2.7, z + lz, dark, { grad: 0.2 });
+  for (const sz of [-2.2, 2.2]) {
+    g.box(4.9, 0.18, 0.16, x, 2.6, z + sz, wood, { rz: 0.82 });
+    g.box(4.9, 0.18, 0.16, x, 2.6, z + sz, wood, { rz: -0.82 });
+  }
+  for (const sx of [-2.2, 2.2]) {
+    g.box(0.16, 0.18, 4.9, x + sx, 2.6, z, wood, { rx: 0.82 });
+    g.box(0.16, 0.18, 4.9, x + sx, 2.6, z, wood, { rx: -0.82 });
+  }
+  // trémie
+  g.box(5.4, 3.4, 5.4, x, 7.1, z, 0x6e5238, { pat: PAT.lames, grad: 0.15 });
+  g.box(5.6, 0.3, 5.6, x, 5.45, z, dark);
+  g.box(5.6, 0.25, 5.6, x, 8.8, z, dark);
+  // toit à deux pans
+  g.prism(6.0, 1.5, 6.0, x, 8.9, z, 0x4e5a60, { pat: PAT.toleToit });
+  // goulotte et clapet
+  g.box(1.1, 0.35, 3.6, x, 5.6, z + chuteDir * 3.6, 0x4a4c50, { rx: chuteDir * 0.42 });
+  g.box(1.3, 0.5, 0.12, x, 4.9, z + chuteDir * 5.3, 0x2a2c30);
+  // échelle
+  g.box(0.06, 8.4, 0.06, x + 2.75, 4.2, z + 1.0, 0x2a2c30);
+  g.box(0.06, 8.4, 0.06, x + 2.75, 4.2, z + 1.5, 0x2a2c30);
+  for (let i = 0; i < 16; i++) g.box(0.05, 0.05, 0.5, x + 2.75, 0.4 + i * 0.5, z + 1.25, 0x2a2c30);
+  // tas de charbon
+  for (let i = 0; i < 9; i++) g.dodeca(0.5 + (i % 3) * 0.18, x + ((i % 3) - 1) * 1.1, 0.35, z + chuteDir * (-0.6 + Math.floor(i / 3) * 0.7) + (i % 2) * 0.3, i % 2 ? 0x2c2c34 : 0x22222a, { ry: i, sy: 0.6 });
+}
+
+/** Château d'eau : cuve en douelles cerclées sur pieds, toit conique et col de cygne. */
+export function waterTower(g: GeoBuilder, x: number, z: number, r = 2.4, h = 7): PropCollider {
+  const legs = h - 2.6;
+  for (let i = 0; i < 4; i++) {
+    const a = Math.PI / 4 + (i * Math.PI) / 2;
+    g.box(0.36, legs, 0.36, x + Math.cos(a) * r * 0.75, legs / 2, z + Math.sin(a) * r * 0.75, 0x3a2c22, { grad: 0.2 });
+  }
+  g.box(r * 1.6, 0.16, 0.14, x, legs * 0.45, z, 0x5e4632, { rz: 0.9 });
+  g.box(0.14, 0.16, r * 1.6, x, legs * 0.45, z, 0x5e4632, { rx: 0.9 });
+  g.cyl(r, r, 2.6, x, legs + 1.3, z, 0x6e5238, { seg: 12, pat: PAT.lames });
+  for (const y of [legs + 0.35, legs + 1.3, legs + 2.25]) g.cyl(r + 0.05, r + 0.05, 0.12, x, y, z, 0x2a2c30, { seg: 12 });
+  g.cone(r + 0.3, 1.3, x, h + 0.65, z, 0x4e5a60, { seg: 12 });
+  g.cyl(0.18, 0.18, 2.4, x - r - 0.2, legs + 0.4, z, 0x2a2c30, { rz: 0.5, seg: 6 });
+  return { kind: 'circle', x, z, r: r * 0.85 };
+}
+
+/** Wagon abandonné sur une voie de garage. */
+export function oldWagon(g: GeoBuilder, x: number, z: number, color: number, rng: Rng, len = 11): void {
+  g.box(len - 0.2, 0.3, 3.0, x, 1.05, z, 0x24262a);
+  for (const bx of [x - len / 2 + 2, x + len / 2 - 2]) {
+    g.box(2.4, 0.35, 2.4, bx, 0.7, z, 0x3a3c40);
+    for (const ax of [-0.7, 0.7]) for (const sz of [-1.0, 1.0]) g.cyl(0.42, 0.42, 0.16, bx + ax, 0.45, z + sz, 0x2a2622, { rx: Math.PI / 2, seg: 10 });
+  }
+  g.box(len, 2.6, 3.4, x, 2.5, z, color, { pat: PAT.lames, grad: 0.2, vary: 0.06 });
+  g.vault(len + 0.1, 0.4, 1.8, x, 3.8, z, 0x55504a, { seg: 8, pat: PAT.toleToit });
+  // porte coulissante entrouverte
+  g.box(1.8, 2.2, 0.08, x + rng.range(-1.5, 1.5), 2.4, z + 1.74, shade(color, 0.8), { pat: PAT.lames });
+  g.box(len - 0.4, 0.1, 0.12, x, 3.65, z + 1.74, 0x2a2c30);
+  // rouille et lichen
+  for (let i = 0; i < 3; i++) g.box(rng.range(0.6, 1.4), rng.range(0.4, 1.2), 0.05, x + rng.range(-len / 2 + 1, len / 2 - 1), rng.range(1.6, 3.2), z + 1.71, 0x7a4028);
+}
+
+function shade(hex: number, k: number): number {
+  const r = Math.min(255, Math.round(((hex >> 16) & 255) * k));
+  const gg = Math.min(255, Math.round(((hex >> 8) & 255) * k));
+  const b = Math.min(255, Math.round((hex & 255) * k));
+  return (r << 16) | (gg << 8) | b;
+}
+
+/** Chevalement de mine : tour en treillis rivetée, molettes à rayons, contre-fiche et câbles. */
+export function headframe(g: GeoBuilder, x: number, z: number, h = 14): void {
+  const steel = 0x6a4a36;
+  const dark = 0x3a2c24;
+  // quatre montants légèrement inclinés
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) g.box(0.36, h, 0.36, x + sx * 2.3, h / 2, z + sz * 0.9, steel, { rz: sx * 0.08, rx: -sz * 0.03, grad: 0.25 });
+  }
+  // croisillons sur les faces avant/arrière et latérales
+  const n = Math.floor(h / 2.6);
+  for (let i = 0; i < n; i++) {
+    const y = 1.4 + i * 2.6;
+    const half = 2.3 - (y / h) * 1.1;
+    for (const sz of [-0.9, 0.9]) {
+      g.box(half * 2, 0.16, 0.12, x, y, z + sz, dark);
+      g.box(half * 2.3, 0.12, 0.1, x, y + 1.3, z + sz, steel, { rz: 0.55 });
+    }
+    for (const sx of [-1, 1]) g.box(0.12, 0.16, 1.8, x + sx * half, y, z, dark);
+  }
+  // plate-forme et garde-corps
+  g.box(3.6, 0.3, 2.6, x, h - 0.6, z, dark);
+  for (const sz of [-1.25, 1.25]) g.box(3.6, 0.08, 0.08, x, h + 0.3, z + sz, steel);
+  // molettes
+  for (const dx of [-0.6, 0.6]) {
+    g.cyl(1.45, 1.45, 0.16, x + dx, h + 0.6, z, 0x2a2622, { rz: Math.PI / 2, seg: 14 });
+    g.cyl(1.25, 1.25, 0.2, x + dx, h + 0.6, z, 0x8a6a3a, { rz: Math.PI / 2, seg: 14 });
+    for (let k = 0; k < 4; k++) g.box(0.22, 2.5, 0.1, x + dx, h + 0.6, z, 0x2a2622, { rx: (k * Math.PI) / 4 });
+    g.cyl(0.25, 0.25, 0.3, x + dx, h + 0.6, z, 0x2a2622, { rz: Math.PI / 2, seg: 8 });
+  }
+  // contre-fiche vers la salle des machines
+  g.box(0.42, h * 0.95, 0.42, x, h * 0.45, z + 3.6, steel, { rx: -0.38, grad: 0.2 });
+  // câbles
+  for (const dx of [-0.6, 0.6]) g.box(0.05, 0.05, 16, x + dx, h - 4.5, z + 4.75, 0x1a1a1e, { rx: 0.94 });
 }

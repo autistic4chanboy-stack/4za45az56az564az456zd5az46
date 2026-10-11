@@ -24,7 +24,41 @@ export const toonUniforms = {
   uSnowColor: { value: new THREE.Color(0xeef3f7) },
   /** Nombre de paliers des lumières ponctuelles. */
   uLightBands: { value: 4 },
+  /** 0 = jour, 1 = nuit : allume les fenêtres. */
+  uNightGlow: { value: 0 },
+  /** Couleur du ciel (reflets des vitres). */
+  uSkyTint: { value: new THREE.Color(0x8aa0b8) },
 };
+
+/**
+ * Motifs procéduraux dessinés par le shader (attribut aPat des géométries GeoBuilder) :
+ * ils restent nets au texel près et ne coûtent ni texture ni draw call.
+ */
+export const PAT = {
+  aucun: 0,
+  /** Bardage de planches horizontales. */
+  planches: 1,
+  /** Planches verticales à couvre-joints (granges). */
+  lames: 2,
+  briques: 3,
+  pierre: 4,
+  /** Panneaux de béton. */
+  beton: 5,
+  /** Tôle ondulée (murs). */
+  tole: 6,
+  /** Tuiles (toits en pente). */
+  tuiles: 7,
+  /** Bac acier à nervures (toits). */
+  toleToit: 8,
+  /** Toit-terrasse en lés de bitume. */
+  feutre: 9,
+  /** Bardeaux de bois. */
+  bardeaux: 10,
+  /** Platelage (planches au sol) et bardage sur les chants. */
+  platelage: 11,
+  /** Pavés. */
+  paves: 12,
+} as const;
 
 export interface ToonOptions {
   /** Balancement au vent : 'world' (géométrie fusionnée, selon la hauteur) ou 'local' (instances, selon y local). */
@@ -37,6 +71,8 @@ export interface ToonOptions {
   snow?: boolean;
   /** Surface d'eau animée (rides et reflets). */
   water?: boolean;
+  /** Motifs procéduraux (attribut aPat). */
+  pattern?: boolean;
 }
 
 const COMMON_FRAG = /* glsl */ `
@@ -79,6 +115,150 @@ float toonCloud(vec2 p) {
 }
 `;
 
+const PATTERN_FRAG = /* glsl */ `
+varying float vPat;
+// ligne d'un texel au bas (pL) ou au haut (pH) de chaque cellule ; w = largeur d'un texel en cellules
+float pL( float c, float w ) { return step( fract( c ), w ); }
+float pH( float c, float w ) { return step( 1.0 - w, fract( c ) ); }
+// un motif s'efface quand sa période tombe sous ~3 texels (pas de moiré)
+float pVis( float w ) { return 1.0 - smoothstep( 0.26, 0.45, w ); }
+
+vec3 toonPattern( vec3 col, float id, vec3 p, vec3 n ) {
+  vec3 an = abs( n );
+  bool top = an.y > 0.6;
+  // murs : u horizontal le long de la face, v vertical
+  vec2 tw = normalize( vec2( -n.z, n.x ) + vec2( 1e-6, 0.0 ) );
+  float u = dot( p.xz, tw );
+  float v = p.y;
+  // dessus et toits : s descend la pente, w suit le faîtage
+  vec2 dd = an.y > 0.985 ? vec2( 0.0, 1.0 ) : normalize( n.xz );
+  vec2 tt = vec2( -dd.y, dd.x );
+  float s = dot( p.xz, dd ) / max( an.y, 0.3 );
+  float w = dot( p.xz, tt );
+  float fu = fwidth( u );
+  float fv = fwidth( v );
+  float fs = fwidth( s );
+  float fw = fwidth( w );
+  float k = 1.0;
+  vec3 c = col;
+  if ( !top ) {
+    if ( id == 1.0 || id == 11.0 ) {
+      // planches horizontales : lèvre éclairée, ombre portée sur la planche du dessous, aboutements
+      float r = v / 0.36;
+      float row = floor( r );
+      float cc = u / 2.6 + tHash( vec2( row, 3.1 ) );
+      float lw = fv / 0.36;
+      float vis = pVis( lw );
+      k = 1.0 + ( tHash( vec2( row, floor( cc ) ) ) - 0.5 ) * 0.12 * vis;
+      k *= 1.0 + ( pL( r, lw ) * 0.1 - pH( r, lw ) * 0.32 ) * vis;
+      k *= 1.0 - pL( cc, fu / 2.6 ) * 0.2 * vis;
+    } else if ( id == 2.0 ) {
+      // lames verticales et couvre-joints
+      float cc = u / 0.5;
+      float lw = fu / 0.5;
+      float vis = pVis( lw );
+      k = 1.0 + ( tHash( vec2( floor( cc ), 7.7 ) ) - 0.5 ) * 0.14 * vis;
+      k *= 1.0 + ( pL( cc, lw ) * 0.12 - pH( cc, lw ) * 0.3 ) * vis;
+    } else if ( id == 3.0 ) {
+      // briques en quinconce, joints clairs, quelques briques recuites
+      float r = v / 0.34;
+      float row = floor( r );
+      float cc = u / 0.72 + mod( row, 2.0 ) * 0.5;
+      float j = tHash( vec2( floor( cc ), row ) );
+      float vis = pVis( fv / 0.34 );
+      k = 1.0 + ( j - 0.5 ) * 0.16 * vis - step( 0.92, j ) * 0.16 * vis;
+      float m = max( pL( r, fv / 0.34 ), pL( cc, fu / 0.72 ) ) * vis;
+      c = mix( c * k, mix( c, vec3( 0.3, 0.27, 0.22 ), 0.55 ), m * 0.85 );
+      k = 1.0;
+    } else if ( id == 4.0 || id == 12.0 ) {
+      // moellons : assises irrégulières, joints sombres
+      float r = v / 0.5;
+      float row = floor( r );
+      float len = 0.75 + tHash( vec2( row, 1.3 ) ) * 0.55;
+      float cc = u / len + tHash( vec2( row, 2.9 ) );
+      float j = tHash( vec2( floor( cc ), row + 0.5 ) );
+      float vis = pVis( fv / 0.5 );
+      k = 1.0 + ( j - 0.5 ) * 0.22 * vis;
+      k *= 1.0 + pL( r, fv / 0.5 ) * 0.1 * vis;
+      k *= 1.0 - max( pH( r, fv / 0.5 ), pL( cc, fu / len ) ) * 0.35 * vis;
+    } else if ( id == 5.0 ) {
+      // panneaux de béton, joints, coulures
+      float r = v / 1.6;
+      float cc = u / 2.8;
+      float vis = pVis( fv / 1.6 * 3.0 );
+      k = 1.0 + ( tHash( vec2( floor( cc ), floor( r ) ) ) - 0.5 ) * 0.07;
+      k *= 1.0 - step( 0.62, tNoise( vec2( u * 2.2, v * 0.35 ) ) ) * 0.07;
+      k *= 1.0 - max( pL( r, fv / 1.6 ), pL( cc, fu / 2.8 ) ) * 0.3 * vis;
+    } else if ( id == 6.0 || id == 8.0 ) {
+      // tôle ondulée : nervures verticales, coulures de rouille
+      float cc = u / 0.34;
+      float vis = pVis( fu / 0.34 );
+      float f = fract( cc );
+      k = 1.0 + ( f < 0.5 ? 0.07 : -0.08 ) * vis;
+      float rs = step( 0.66, tNoise( vec2( floor( cc ) * 0.37, v * 0.45 + floor( cc ) * 1.7 ) ) );
+      c = mix( c, c * vec3( 1.25, 0.72, 0.5 ), rs * 0.55 );
+    }
+  } else {
+    if ( id == 7.0 || id == 10.0 ) {
+      // tuiles / bardeaux : rangées le long de la pente, lèvre claire, ombre sous la rangée du dessus
+      float P = id == 7.0 ? 0.38 : 0.32;
+      float r = s / P;
+      float row = floor( r );
+      float cw = id == 7.0 ? 0.34 : 0.2 + 0.16 * tHash( vec2( row, 5.0 ) );
+      float cc = w / cw + ( id == 7.0 ? mod( row, 2.0 ) * 0.5 : tHash( vec2( row, 1.0 ) ) );
+      float j = tHash( vec2( floor( cc ), row ) );
+      float lw = fs / P;
+      float vis = pVis( lw );
+      float tone = j < 0.33 ? -0.07 : j < 0.66 ? 0.0 : 0.06;
+      k = 1.0 + ( tone + ( id == 10.0 ? ( j - 0.5 ) * 0.1 : 0.0 ) ) * vis;
+      k *= 1.0 - step( 0.975, j ) * 0.3 * vis;
+      k *= 1.0 + ( pH( r, lw ) * 0.14 - pL( r, lw ) * 0.34 ) * vis;
+      k *= 1.0 - pL( cc, fw / cw ) * 0.16 * vis;
+      // mousse et salissures par petites plaques
+      float moss = step( 0.74, tNoise( p.xz * 0.9 + 11.0 ) ) * step( 0.5, tHash( vec2( floor( cc ), row ) + 3.3 ) );
+      c = mix( c, c * vec3( 0.8, 0.94, 0.66 ), moss * 0.4 );
+    } else if ( id == 8.0 ) {
+      // bac acier : nervures perpendiculaires au faîtage, taches de rouille
+      float cc = w / 0.55;
+      float lw = fw / 0.55;
+      float vis = pVis( lw );
+      k = 1.0 + ( pL( cc, lw ) * 0.16 - pL( cc - lw, lw ) * 0.2 ) * vis;
+      float rs = step( 0.64, tNoise( p.xz * 0.38 + 3.0 ) );
+      c = mix( c, c * vec3( 1.3, 0.7, 0.45 ), rs * 0.5 );
+    } else if ( id == 9.0 ) {
+      // lés de bitume en quinconce, joints clairs, plaques de goudron
+      float r = s / 1.1;
+      float row = floor( r );
+      float cc = w / 1.8 + mod( row, 2.0 ) * 0.5;
+      float vis = pVis( fs / 1.1 * 3.0 );
+      k = 1.0 + ( tHash( vec2( floor( cc ), row ) ) - 0.5 ) * 0.08;
+      k *= 1.0 + max( pL( r, fs / 1.1 ), pL( cc, fw / 1.8 ) ) * 0.14 * vis;
+      k *= 1.0 - step( 0.8, tNoise( p.xz * 1.7 ) ) * 0.1;
+    } else if ( id == 11.0 ) {
+      // platelage : planches le long de x, aboutements décalés
+      float r = p.z / 0.32;
+      float row = floor( r );
+      float cc = p.x / 2.4 + tHash( vec2( row, 4.2 ) );
+      float lw = fwidth( p.z ) / 0.32;
+      float vis = pVis( lw );
+      k = 1.0 + ( tHash( vec2( row, floor( cc ) ) ) - 0.5 ) * 0.14 * vis;
+      k *= 1.0 - max( pL( r, lw ), pL( cc, fwidth( p.x ) / 2.4 ) ) * 0.3 * vis;
+    } else if ( id == 12.0 ) {
+      // pavés en quinconce
+      float r = p.z / 0.4;
+      float row = floor( r );
+      float cc = p.x / 0.46 + mod( row, 2.0 ) * 0.5;
+      float j = tHash( vec2( floor( cc ), row ) );
+      float lw = fwidth( p.z ) / 0.4;
+      float vis = pVis( lw );
+      k = 1.0 + ( j - 0.5 ) * 0.2 * vis;
+      k *= 1.0 + ( pH( r, lw ) * 0.1 - max( pL( r, lw ), pL( cc, fwidth( p.x ) / 0.46 ) ) * 0.36 ) * vis;
+    }
+  }
+  return c * k;
+}
+`;
+
 const LIGHTS_PARS = /* glsl */ `
 varying vec3 vViewPosition;
 
@@ -91,7 +271,9 @@ struct LambertMaterial {
 void RE_Direct_Sun( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in LambertMaterial material, inout ReflectedLight reflectedLight ) {
   float ndl = dot( geometryNormal, directLight.direction );
   float lit = smoothstep( -0.03, 0.05, ndl );
-  float form = mix( 0.72, 1.0, smoothstep( 0.32, 0.42, ndl ) );
+  // trois paliers : face au soleil, de biais, rasante
+  float form = mix( 0.7, 0.86, smoothstep( 0.3, 0.38, ndl ) );
+  form = mix( form, 1.0, smoothstep( 0.66, 0.74, ndl ) );
   float sh = smoothstep( 0.4, 0.6, toonSunShadow );
   float k = lit * sh * toonCloud( vTWorld.xz ) * form;
   reflectedLight.directDiffuse += directLight.color * k * BRDF_Lambert( material.diffuseColor );
@@ -139,7 +321,7 @@ function lightsFragmentBegin(): string {
 
 /** Transforme un MeshLambertMaterial en matériau toon (modifie l'instance). */
 export function toonify<T extends THREE.MeshLambertMaterial>(mat: T, opts: ToonOptions = {}): T {
-  const key = `toon:${opts.sway ?? ''}:${opts.swayAmp ?? 0}:${opts.ground ? 1 : 0}:${opts.snow === false ? 0 : 1}:${opts.water ? 1 : 0}`;
+  const key = `toon:${opts.sway ?? ''}:${opts.swayAmp ?? 0}:${opts.ground ? 1 : 0}:${opts.snow === false ? 0 : 1}:${opts.water ? 1 : 0}:${opts.pattern ? 1 : 0}`;
   mat.onBeforeCompile = (shader) => {
     const u = shader.uniforms;
     for (const [k, v] of Object.entries(toonUniforms)) u[k] = v;
@@ -148,6 +330,7 @@ export function toonify<T extends THREE.MeshLambertMaterial>(mat: T, opts: ToonO
     if (opts.ground) shader.defines = { ...(shader.defines ?? {}), TOON_GROUND: 1 };
     if (opts.snow !== false) shader.defines = { ...(shader.defines ?? {}), TOON_SNOW: 1 };
     if (opts.water) shader.defines = { ...(shader.defines ?? {}), TOON_WATER: 1 };
+    if (opts.pattern) shader.defines = { ...(shader.defines ?? {}), TOON_PATTERN: 1 };
 
     // ---------------------------------------------------------------- vertex
     shader.vertexShader = shader.vertexShader
@@ -159,6 +342,10 @@ uniform vec2 uWind;
 uniform float uSwayAmp;
 varying vec3 vTWorld;
 varying vec3 vTLocal;
+#ifdef TOON_PATTERN
+attribute float aPat;
+varying float vPat;
+#endif
 vec2 toonWind(vec2 p) {
   float w = sin(p.x * 0.31 + uTime * 1.9) * 0.55 + sin(p.y * 0.23 - uTime * 1.3 + p.x * 0.07) * 0.45;
   float gust = 0.55 + 0.45 * sin(uTime * 0.37 + p.x * 0.021 + p.y * 0.013);
@@ -168,6 +355,9 @@ vec2 toonWind(vec2 p) {
       .replace(
         '#include <project_vertex>',
         /* glsl */ `vTLocal = transformed;
+#ifdef TOON_PATTERN
+vPat = aPat;
+#endif
 vec4 tWorld = vec4( transformed, 1.0 );
 #ifdef USE_BATCHING
   tWorld = batchingMatrix * tWorld;
@@ -191,13 +381,19 @@ gl_Position = projectionMatrix * mvPosition;`,
 
     // ---------------------------------------------------------------- fragment
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${COMMON_FRAG}`)
+      .replace('#include <common>', `#include <common>\n${COMMON_FRAG}\n${opts.pattern ? PATTERN_FRAG : ''}`)
       .replace('#include <lights_lambert_pars_fragment>', LIGHTS_PARS)
       .replace('#include <lights_fragment_begin>', lightsFragmentBegin())
       .replace(
         '#include <color_fragment>',
         /* glsl */ `#include <color_fragment>
 vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
+#ifdef TOON_PATTERN
+  {
+    float pid = floor( vPat + 0.5 );
+    if ( pid > 0.0 ) diffuseColor.rgb = toonPattern( diffuseColor.rgb, pid, vTLocal, normalize( cross( dFdx( vTLocal ), dFdy( vTLocal ) ) ) );
+  }
+#endif
 #ifdef TOON_GROUND
   {
     vec2 gp = vTLocal.xz;
@@ -245,4 +441,37 @@ vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
 /** Clone toon d'un matériau Lambert (onBeforeCompile n'est pas copié par clone()). */
 export function toonClone<T extends THREE.MeshLambertMaterial>(mat: T, opts: ToonOptions = {}): T {
   return toonify(mat.clone() as T, opts);
+}
+
+/**
+ * Vitres : de jour, un verre sombre teinté par le ciel et barré de deux reflets obliques
+ * (le reflet classique du pixel art) ; la nuit, les fenêtres éclairées (couleur de sommet vive)
+ * s'allument. Modifie un MeshBasicMaterial.
+ */
+export function windowify<T extends THREE.MeshBasicMaterial>(mat: T): T {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uNightGlow = toonUniforms.uNightGlow;
+    shader.uniforms.uSkyTint = toonUniforms.uSkyTint;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWinP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWinP = transformed;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWinP;\nuniform float uNightGlow;\nuniform vec3 uSkyTint;')
+      .replace(
+        '#include <color_fragment>',
+        /* glsl */ `#include <color_fragment>
+{
+  vec3 lit = diffuseColor.rgb;
+  float isLit = step( 0.22, max( lit.r, max( lit.g, lit.b ) ) );
+  vec3 glass = mix( vec3( 0.014, 0.022, 0.035 ), uSkyTint, 0.28 );
+  float f = fract( ( vWinP.x + vWinP.z ) * 0.62 - vWinP.y * 0.55 );
+  float streak = step( f, 0.13 ) + step( abs( f - 0.24 ), 0.03 ) * 0.7;
+  glass += streak * mix( vec3( 0.05 ), uSkyTint * 0.35, 0.5 );
+  diffuseColor.rgb = mix( glass, lit, isLit * uNightGlow );
+}`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'toon:window';
+  mat.needsUpdate = true;
+  return mat;
 }

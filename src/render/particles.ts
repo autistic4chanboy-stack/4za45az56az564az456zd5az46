@@ -48,12 +48,24 @@ const FRAG = /* glsl */ `
 varying vec4 vColor;
 varying vec2 vUv;
 uniform float uSoft;
+uniform float uAdd;
 #include <fog_pars_fragment>
 void main() {
-  float d = length(vUv - 0.5) * 2.0;
-  float a = vColor.a * (1.0 - smoothstep(uSoft, 1.0, d));
+  // style pixel : disque net, volumes en deux tons, transparence en paliers
+  vec2 q = vUv - 0.5;
+  float d = length(q) * 2.0;
+  if (d > 1.0) discard;
+  vec3 col = vColor.rgb;
+  float a = vColor.a;
+  if (uAdd > 0.5) {
+    a *= d < 0.42 ? 1.0 : d < 0.74 ? 0.5 : 0.16;
+  } else {
+    col *= q.y + q.x * 0.35 < -0.1 ? 0.8 : 1.0;
+    a *= d < uSoft + 0.3 ? 1.0 : 0.55;
+  }
+  a = floor(a * 5.0 + 0.5) / 5.0;
   if (a < 0.01) discard;
-  gl_FragColor = vec4(vColor.rgb, a);
+  gl_FragColor = vec4(col, min(a, 1.0));
   #include <colorspace_fragment>
   #include <fog_fragment>
 }
@@ -98,7 +110,7 @@ export class ParticleSystem {
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uSoft: { value: soft } }]),
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uSoft: { value: soft }, uAdd: { value: additive ? 1 : 0 } }]),
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
@@ -412,6 +424,24 @@ export class FX {
       alpha0: 0.9,
       drag: 2.5,
       world,
+    });
+  }
+
+  /** Fumée de cheminée, poussée par le vent. */
+  chimney(x: number, y: number, z: number, windX: number, windZ: number): void {
+    this.smoke.spawn({
+      x, y, z,
+      vx: windX * 0.7 + (Math.random() - 0.5) * 0.15,
+      vy: 0.8 + Math.random() * 0.3,
+      vz: windZ * 0.7 + (Math.random() - 0.5) * 0.15,
+      life: 2.8 + Math.random() * 1.2,
+      size0: 0.35,
+      size1: 1.7,
+      color0: 0x8a847e,
+      color1: 0xb8b4ae,
+      alpha0: 0.5,
+      alpha1: 0,
+      drag: 0.25,
     });
   }
 

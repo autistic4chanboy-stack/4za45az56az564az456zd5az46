@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GeoBuilder } from '../render/geo';
+import { PAT } from '../render/toon';
 import { WAGON_TYPES, DECOR, type WagonTypeDef, type DecorId, type EquipId } from '../data/train';
 import type { WagonState } from '../state/types';
 
@@ -74,12 +75,13 @@ function chassis(g: GeoBuilder, L: number, color: number): void {
   g.box(L - 0.1, 0.14, 3.9, 0, FLOOR - 0.07, 0, color, { vary: 0 });
 }
 
-function floorPlanks(g: GeoBuilder, L: number, color = WOOD): void {
-  const n = Math.floor((3.6) / 0.45);
-  for (let i = 0; i < n; i++) {
-    const z = -1.8 + 0.225 + i * 0.45;
-    g.box(L - 0.4, 0.04, 0.42, 0, FLOOR + 0.02, z, color, { vary: 0.07 });
-  }
+function floorPlanks(g: GeoBuilder, L: number, color = WOOD, metal = false): void {
+  g.box(L - 0.4, 0.04, 3.6, 0, FLOOR + 0.02, 0, color, { pat: metal ? PAT.toleToit : PAT.platelage });
+}
+
+/** Motif des parois selon le type de wagon : lames de bois ou tôles rivetées. */
+function wallPat(type: string): number {
+  return type === 'blinde' || type === 'cellule' || type === 'atelier' || type === 'generateur' || type === 'infirmerie' ? PAT.beton : PAT.lames;
 }
 
 function windowXs(L: number, door: number | null, spacing = 2.3): number[] {
@@ -94,14 +96,14 @@ function windowXs(L: number, door: number | null, spacing = 2.3): number[] {
 }
 
 /** Mur latéral (z = ±HALF_W) avec ouverture de porte et fenêtres. */
-function sideWall(g: GeoBuilder, side: -1 | 1, L: number, door: number | null, color: number, trim: number, windows: boolean, slits = false): void {
+function sideWall(g: GeoBuilder, side: -1 | 1, L: number, door: number | null, color: number, trim: number, windows: boolean, slits = false, pat = 0): void {
   const z = side * (HALF_W - 0.075);
   const segs: [number, number][] = door === null ? [[-L / 2, L / 2]] : [[-L / 2, door - DOOR_HALF], [door + DOOR_HALF, L / 2]];
   const h = WALL_TOP - FLOOR;
   for (const [a, b] of segs) {
     const w = b - a;
     if (w <= 0.01) continue;
-    g.box(w, h, 0.15, (a + b) / 2, FLOOR + h / 2, z, color, { grad: 0.15 });
+    g.box(w, h, 0.15, (a + b) / 2, FLOOR + h / 2, z, color, { grad: 0.15, pat });
     g.box(w, 0.12, 0.2, (a + b) / 2, FLOOR + 0.6, z, trim);
     g.box(w, 0.08, 0.2, (a + b) / 2, WALL_TOP - 0.25, z, trim);
   }
@@ -133,25 +135,36 @@ function sideWall(g: GeoBuilder, side: -1 | 1, L: number, door: number | null, c
   }
 }
 
-function endWalls(g: GeoBuilder, L: number, color: number, trim: number): void {
+function endWalls(g: GeoBuilder, L: number, color: number, trim: number, pat = 0): void {
   const h = WALL_TOP - FLOOR;
   for (const s of [-1, 1]) {
     const x = s * (L / 2 - 0.075);
     const segW = HALF_W - DOOR_HALF;
-    g.box(0.15, h, segW, x, FLOOR + h / 2, -(DOOR_HALF + segW / 2), color);
-    g.box(0.15, h, segW, x, FLOOR + h / 2, DOOR_HALF + segW / 2, color);
-    g.box(0.15, 0.5, DOOR_HALF * 2, x, WALL_TOP - 0.25, 0, color);
+    g.box(0.15, h, segW, x, FLOOR + h / 2, -(DOOR_HALF + segW / 2), color, { pat });
+    g.box(0.15, h, segW, x, FLOOR + h / 2, DOOR_HALF + segW / 2, color, { pat });
+    g.box(0.15, 0.5, DOOR_HALF * 2, x, WALL_TOP - 0.25, 0, color, { pat });
     g.box(0.2, h, 0.08, x, FLOOR + h / 2, -DOOR_HALF, trim);
     g.box(0.2, h, 0.08, x, FLOOR + h / 2, DOOR_HALF, trim);
   }
 }
 
-function roofOf(L: number, color: number, trim: number): THREE.Group {
+/** Toit bombé en tôle à couvre-joints, passerelle et aérateurs. */
+function roofOf(L: number, color: number, trim: number, glass = false, vents = 0): THREE.Group {
   const g = new GeoBuilder();
-  g.box(L + 0.1, 0.18, 4.25, 0, WALL_TOP + 0.09, 0, color);
-  g.box(L - 0.2, 0.16, 3.2, 0, WALL_TOP + 0.26, 0, color);
-  g.box(L + 0.12, 0.06, 0.1, 0, WALL_TOP + 0.02, 2.12, trim);
-  g.box(L + 0.12, 0.06, 0.1, 0, WALL_TOP + 0.02, -2.12, trim);
+  g.box(L + 0.14, 0.08, 4.3, 0, WALL_TOP + 0.04, 0, trim);
+  if (glass) g.layer('glass').vault(L, 0.62, 2.16, 0, WALL_TOP + 0.06, 0, color, { seg: 8 }).layer('base');
+  else g.vault(L, 0.42, 2.16, 0, WALL_TOP + 0.06, 0, color, { seg: 8, pat: PAT.toleToit });
+  if (glass) {
+    for (let x = -L / 2; x <= L / 2 + 0.01; x += L / Math.round(L / 1.6)) g.vault(0.08, 0.64, 2.18, x, WALL_TOP + 0.06, 0, 0x4e5e54, { seg: 8 });
+  } else {
+    // passerelle de toit
+    g.box(L - 0.6, 0.06, 0.56, 0, WALL_TOP + 0.5, 0, 0x5a4634, { pat: PAT.platelage });
+    for (let i = 0; i < vents; i++) {
+      const x = -L / 2 + (L * (i + 0.5)) / vents;
+      g.box(0.5, 0.26, 0.42, x, WALL_TOP + 0.5, 0.95, 0x3a3836);
+      g.box(0.62, 0.06, 0.54, x, WALL_TOP + 0.66, 0.95, 0x2a2826);
+    }
+  }
   return g.toGroup();
 }
 
@@ -336,7 +349,7 @@ export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
       const cabX0 = -L / 2;
       const cabX1 = -L / 2 + cabLen;
       sideDoor = cabX0 + 2.3;
-      floorPlanks(g, L, 0x3a3530);
+      floorPlanks(g, L, 0x4a4540, true);
       // chaudière
       const bx = (cabX1 + L / 2) / 2;
       const bl = L / 2 - cabX1;
@@ -397,9 +410,9 @@ export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
         const b0 = sideDoor + DOOR_HALF;
         const b1 = cabX1;
         const target = s < 0 ? g : fg;
-        target.box(a1 - a0, h, 0.15, (a0 + a1) / 2, FLOOR + h / 2, z, color);
-        target.box(b1 - b0, h, 0.15, (b0 + b1) / 2, FLOOR + h / 2, z, color);
-        target.box(DOOR_HALF * 2, 0.5, 0.15, sideDoor, WALL_TOP - 0.25, z, color);
+        target.box(a1 - a0, h, 0.15, (a0 + a1) / 2, FLOOR + h / 2, z, color, { pat: PAT.beton });
+        target.box(b1 - b0, h, 0.15, (b0 + b1) / 2, FLOOR + h / 2, z, color, { pat: PAT.beton });
+        target.box(DOOR_HALF * 2, 0.5, 0.15, sideDoor, WALL_TOP - 0.25, z, color, { pat: PAT.beton });
         target.box(cabLen, 0.12, 0.2, (cabX0 + cabX1) / 2, FLOOR + 0.6, z, trim);
         target.box(0.9, 0.7, 0.2, (b0 + b1) / 2, FLOOR + 1.7, z, GLASS);
         target.layer('glow').box(0.8, 0.6, 0.22, (b0 + b1) / 2, FLOOR + 1.7, z, LAMP);
@@ -421,7 +434,8 @@ export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
       colliders.push({ x0: cabX0 - 0.02, z0: DOOR_HALF, x1: cabX0 + 0.16, z1: HALF_W });
       // toit de cabine
       const rg = new GeoBuilder();
-      rg.box(cabLen + 0.3, 0.2, 4.3, (cabX0 + cabX1) / 2, WALL_TOP + 0.1, 0, 0x1e1f22);
+      rg.box(cabLen + 0.34, 0.08, 4.36, (cabX0 + cabX1) / 2, WALL_TOP + 0.04, 0, trim);
+      rg.vault(cabLen + 0.3, 0.45, 2.2, (cabX0 + cabX1) / 2, WALL_TOP + 0.06, 0, 0x34363a, { seg: 8, pat: PAT.toleToit });
       roof = rg.toGroup();
       slotAnchors = [{ x: L / 2 - 3.2, z: 0, y: FLOOR + 3.0 }];
       const shell = g.toGroup();
@@ -430,9 +444,9 @@ export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
     }
     case 'tender': {
       sideDoor = null;
-      floorPlanks(g, L, 0x3a3530);
+      floorPlanks(g, L, 0x4a4540, true);
       for (const s of [-1, 1]) {
-        g.box(L - 0.2, 2.0, 1.3, 0, FLOOR + 1.0, s * 1.35, color, { grad: 0.2 });
+        g.box(L - 0.2, 2.0, 1.3, 0, FLOOR + 1.0, s * 1.35, color, { grad: 0.2, pat: PAT.beton });
         g.box(L - 0.4, 0.5, 1.1, 0, FLOOR + 2.1, s * 1.3, 0x1a1a1a, { vary: 0.1 });
         for (let i = 0; i < 6; i++) g.dodeca(0.35, -L / 2 + 0.8 + i * 1.2, FLOOR + 2.35, s * 1.3, 0x151515, { sy: 0.6 });
         colliders.push({ x0: -L / 2, z0: s < 0 ? -HALF_W : 0.68, x1: L / 2, z1: s < 0 ? -0.68 : HALF_W });
@@ -446,7 +460,7 @@ export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
     }
     case 'plateforme': {
       sideDoor = 0;
-      floorPlanks(g, L, 0x5a4a38);
+      floorPlanks(g, L, 0x6a5440);
       for (const s of [-1, 1] as const) {
         const target = s < 0 ? g : fg;
         for (const [a, b] of [[-L / 2, -DOOR_HALF], [DOOR_HALF, L / 2]]) {
@@ -474,14 +488,17 @@ export function buildWagonModel(w: WagonState, _frontX: number): WagonModel {
   }
 
   // ---------------------------------------------------- wagons fermés génériques
-  floorPlanks(g, L, w.type === 'infirmerie' ? 0x9a9a92 : w.type === 'atelier' || w.type === 'generateur' ? 0x4a4a46 : WOOD);
+  const metalFloor = w.type === 'atelier' || w.type === 'generateur' || w.type === 'blinde' || w.type === 'cellule';
+  floorPlanks(g, L, w.type === 'infirmerie' ? 0x9a9a92 : metalFloor ? 0x5a5a56 : WOOD, metalFloor);
   const slits = w.type === 'blinde' || w.type === 'cellule';
   const windows = !slits && w.type !== 'fourgon' && w.type !== 'generateur';
-  sideWall(g, -1, L, sideDoor, color, trim, windows, slits);
-  sideWall(fg, 1, L, sideDoor, color, trim, windows, slits);
-  endWalls(g, L, color, trim);
+  const pat = wallPat(w.type);
+  sideWall(g, -1, L, sideDoor, color, trim, windows, slits, pat);
+  sideWall(fg, 1, L, sideDoor, color, trim, windows, slits, pat);
+  endWalls(g, L, color, trim, pat);
   wallColliders(sideDoor);
-  roof = roofOf(L, w.type === 'serre' ? 0x9ac8b0 : 0x2a2826, trim);
+  const passengerLike = w.type === 'passagers' || w.type === 'restaurant' || w.type === 'salon' || w.type === 'infirmerie';
+  roof = roofOf(L, w.type === 'serre' ? 0x9ac8b0 : 0x55504a, trim, w.type === 'serre', passengerLike ? Math.max(1, Math.round(L / 4)) : 0);
   slotAnchors = roofSlots(def.roofSlots);
   sconce(g, -L / 4);
   sconce(g, L / 4);

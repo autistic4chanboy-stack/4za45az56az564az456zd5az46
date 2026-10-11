@@ -12,6 +12,8 @@ export type Quality = 'basse' | 'moyenne' | 'haute';
 const ZOOM_K = Math.tan((19 * Math.PI) / 180);
 /** Distance de la caméra orthographique à sa cible (sans effet sur le cadrage). */
 export const CAM_DIST = 120;
+/** Inclinaison de la caméra de jeu (rad) : assez haute pour lire l'action, assez basse pour montrer les façades. */
+export const GAME_PITCH = 0.86;
 
 /**
  * Caméra orthographique vue de dessus, calée sur la grille des pixels artistiques :
@@ -25,7 +27,7 @@ export class CameraRig {
   minDist = 12;
   maxDist = 42;
   private zoomTarget = 24;
-  pitch = 0.98;
+  pitch = GAME_PITCH;
   yaw = 0;
   private shakeAmt = 0;
   private shakeTime = 0;
@@ -433,6 +435,8 @@ export class Engine {
     tu.uCloud.value.set(0.022, wk.cover, wk.cloud * twilight, 0.07);
     tu.uCloudOffset.value.set(this.time * 0.006 * wk.wind + (p.scroll ?? 0) * 0.022, this.time * 0.0025 * wk.wind);
     tu.uSnow.value = ease(tu.uSnow.value, p.winter ? 0.85 : 0, 0.5);
+    tu.uNightGlow.value = smoothstep(0.62, 0.3, this.daylight);
+    tu.uSkyTint.value.copy(this.bg);
     this.snapEnv = false;
   }
 

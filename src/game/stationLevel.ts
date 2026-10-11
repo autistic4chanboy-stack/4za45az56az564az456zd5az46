@@ -5,6 +5,7 @@ import { NavGrid, type CollisionWorld, type Collider } from '../world/collision'
 import { BIOMES } from '../data/biomes';
 import { DIFFICULTIES } from '../data/balance';
 import { Materials, disposeObject } from '../render/geo';
+import { toonUniforms } from '../render/toon';
 import { rectContains, type Rect } from '../core/math';
 import { Rng } from '../core/rng';
 import { Enemy } from './enemy';
@@ -37,6 +38,7 @@ export class StationLevel implements Level {
   nav: NavGrid;
   private darkRects: Rect[];
   private lightSpecs: LightSpec[];
+  private chimneyT = 0;
   doors = new Map<string, { spec: DoorSpec; open: boolean; collider: Collider | null; anim: number }>();
   containers = new Map<string, ContainerSpec>();
   levers = new Map<string, { spec: LeverSpec; state: number }>();
@@ -419,7 +421,7 @@ export class StationLevel implements Level {
     // toits et murs avant : masqués quand le joueur est dedans ou caché derrière
     for (const b of this.buildings) {
       const inside = rectContains(b.rect, p.x, p.z, -0.1);
-      const behind = p.x > b.rect.x0 - 1 && p.x < b.rect.x1 + 1 && p.z < b.rect.z0 && p.z > b.rect.z0 - 5;
+      const behind = p.x > b.rect.x0 - 1 && p.x < b.rect.x1 + 1 && p.z < b.rect.z0 && p.z > b.rect.z0 - 6.5;
       const want = inside || behind;
       if (want !== b.inside) {
         b.inside = want;
@@ -427,13 +429,25 @@ export class StationLevel implements Level {
         for (const f of b.front) {
           f.traverse((o) => {
             if (o instanceof THREE.Mesh) {
-              if (o.name === 'glow') o.visible = !want;
-              else o.material = want ? Materials.vcFaded : Materials.vc;
+              if (o.name === 'glow' || o.name === 'window') o.visible = !want;
+              else {
+                o.userData.mat0 ??= o.material;
+                o.material = want ? Materials.vcFaded : o.userData.mat0;
+              }
               o.castShadow = !want;
             }
           });
         }
         if (inside) this.game.onEnterBuilding(b);
+      }
+    }
+    // fumée des cheminées proches
+    this.chimneyT -= dt;
+    if (this.chimneyT <= 0) {
+      this.chimneyT = 0.22;
+      const wind = toonUniforms.uWind.value;
+      for (const c of this.builder.chimneys) {
+        if (Math.abs(c.x - p.x) < 40 && Math.abs(c.z - p.z) < 30) this.game.engine.fx.chimney(c.x, c.y, c.z, wind.x * 2, wind.y * 2);
       }
     }
     // aiguillages : rien à faire ; dangers temporaires

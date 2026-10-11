@@ -228,22 +228,19 @@ const depot: Gen = (b, ctx) => {
   ctx.named.atelier = atelier;
   // tour à charbon et château d'eau
   const g = b.g;
-  g.box(5, 8, 5, -24, 4, 14, 0x3a3a3a);
-  g.box(6, 1, 6, -24, 8.5, 14, 0x2a2a2a);
-  g.box(1.2, 0.5, 4, -24, 6, 10.5, 0x4a4a4a, { rx: 0.5 });
-  for (let i = 0; i < 6; i++) g.dodeca(0.8, -24 + (i % 3 - 1) * 1.2, 0.5, 18 + Math.floor(i / 3), i % 2 ? 0x2c2c34 : 0x22222a, { ry: i });
+  P.coalTower(g, -24, 14.6, -1);
   b.colliders.addRect(-26.5, 11.5, -21.5, 16.5);
   b.reserve({ x0: -28, z0: 10, x1: -20, z1: 20 });
   b.special(-24, 10.2, 'tour_charbon', 'Tour à charbon', 2.2);
   ctx.spots.charbon = { x: -24, z: 10 };
-  P.tank(g, 34, 40, 2.5, 7, 0x6a5a48);
+  P.waterTower(g, 34, 40, 2.5, 7.5);
   b.colliders.addCircle(34, 40, 2.7);
   b.reserve({ x0: 30, z0: 36, x1: 38, z1: 44 });
   // voie de garage avec wagons abandonnés au nord
   b.track(-110, 60, -12);
   for (let i = 0; i < 3; i++) {
     const x = -80 + i * 16;
-    g.box(11, 3, 3.6, x, 2.2, -12, i % 2 ? 0x5a3a2a : 0x4a4a42, { vary: 0.08 });
+    P.oldWagon(g, x, -12, i % 2 ? 0x6a3a2a : 0x4e5048, b.rng);
     b.colliders.addRect(x - 5.5, -13.8, x + 5.5, -10.2);
   }
   b.reserve(region(-112, -16, 62, -8));
@@ -426,10 +423,7 @@ const mine: Gen = (b, ctx) => {
   stationHouse(b, ctx);
   const g = b.g;
   // chevalement
-  g.box(0.5, 14, 0.5, 4, 7, 26, 0x4a3a2a);
-  g.box(0.5, 14, 0.5, 10, 7, 26, 0x4a3a2a);
-  g.box(0.5, 12, 0.5, 7, 6, 31, 0x4a3a2a, { rx: -0.35 });
-  g.cyl(1.4, 1.4, 0.4, 7, 14, 26, 0x2a2a2a, { rz: Math.PI / 2, seg: 12 });
+  P.headframe(g, 7, 26);
   b.colliders.addRect(3.5, 25.5, 10.5, 26.5);
   b.reserve(region(2, 23, 12, 34));
   const entree = b.building({ x: 7, z: 40, w: 12, d: 9, name: 'Carreau de la mine', wall: 0x5a4a3a, roof: 0x2a2a2a, interior: 'atelier', loot: 'charbon', doors: [{ side: 's', offset: 0 }, { side: 'n', offset: 0 }] });
@@ -790,7 +784,7 @@ const triage: Gen = (b, ctx) => {
   for (let i = 0; i < 3; i++) {
     const x = -90 + i * 40;
     const z = -24;
-    g.box(11, 3.2, 3.6, x, 2.2, z, b.rng.pick([0x5a3a2a, 0x4a4a42, 0x3a4a3a]), { vary: 0.06 });
+    P.oldWagon(g, x, z, b.rng.pick([0x6a3a2a, 0x4e5048, 0x3e5244]), b.rng);
     b.colliders.addRect(x - 5.5, z - 1.8, x + 5.5, z + 1.8);
     if (b.rng.chance(0.55)) b.special(x, z + 2.6, `recup_wagon:${b.rng.pick(wagonTypes)}`, 'Remettre ce wagon en état', 2.4);
   }

@@ -3,6 +3,7 @@ import { WAGON_TYPES, EQUIPMENT, DECOR, type EquipDef } from '../data/train';
 import { WEAPONS } from '../data/weapons';
 import { BAL } from '../data/balance';
 import { Materials, GeoBuilder } from '../render/geo';
+import { windowify } from '../render/toon';
 import { CollisionWorld } from '../world/collision';
 import { buildWagonModel, buildEquipModel, decorModel, makeShieldMaterial, FLOOR, HALF_W, GAP, DOOR_HALF, WALL_TOP, type WagonModel, type Spot } from './trainModel';
 import { wagonMaxHp, wagonArmor } from '../state/trainState';
@@ -116,7 +117,7 @@ export class Train {
       const model = buildWagonModel(st, x1);
       const group = new THREE.Group();
       group.position.set(cx, 0, 0);
-      const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: WINDOW_DAY.clone() });
+      const glowMat = windowify(new THREE.MeshBasicMaterial({ vertexColors: true, color: WINDOW_DAY.clone() }));
       const applyGlow = (g: THREE.Object3D) =>
         g.traverse((o) => {
           if (o instanceof THREE.Mesh && o.name === 'glow') o.material = glowMat;
@@ -321,7 +322,10 @@ export class Train {
     w.model.front.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         if (o.name === 'glow') o.visible = !faded;
-        else o.material = faded ? Materials.vcFaded : Materials.vc;
+        else {
+          o.userData.mat0 ??= o.material;
+          o.material = faded ? Materials.vcFaded : o.userData.mat0;
+        }
         o.castShadow = !faded;
       }
     });

@@ -13,6 +13,11 @@ import type { KeycardColor } from '../data/items';
 import type { BiomeId, Season } from '../data/biomes';
 import type { Hazard, BuildingRuntime } from '../game/types';
 import type { NpcGenOpts } from './npcgen';
+import { PAT } from '../render/toon';
+import {
+  STYLES, wallStyleFor, roofKindFor, roofPatFor, roofColorFor, windowFlags, awningFor, signFor,
+  facade, fbox, windowArt, doorArt, cornerArt, roofArt, ruinedWall, shade, enrichRoof, type RoofKind, type WallStyle,
+} from './buildingArt';
 
 export type LockKind = 'code' | 'crochet' | 'carte' | 'cle' | 'barricade';
 
@@ -131,7 +136,9 @@ export interface BuildingSpec {
   wall?: number;
   roof?: number;
   floor?: number;
-  roofType?: 'plat' | 'pignon' | 'aucun' | 'verre';
+  roofType?: RoofKind;
+  /** Style des murs (sinon déduit du nom et de l'intérieur). */
+  style?: WallStyle;
   doors?: { side: 'n' | 's' | 'e' | 'w'; offset?: number; lock?: LockSpec; id?: string; width?: number }[];
   windows?: boolean;
   interior?: InteriorKind;
@@ -176,6 +183,8 @@ export class StationBuilder {
   readonly specials: SpecialSpec[] = [];
   readonly hazards: Hazard[] = [];
   readonly lights: LightSpec[] = [];
+  /** Bouches de cheminée (fumée d'ambiance). */
+  readonly chimneys: { x: number; y: number; z: number }[] = [];
   readonly darkRects: Rect[] = [];
   readonly occupied: Rect[] = [];
   /** Surfaces pavées ou dallées (routes, places) : pas d'herbe. */
@@ -309,9 +318,9 @@ export class StationBuilder {
     const g = this.g;
     const w = p.x1 - p.x0;
     const d = p.z1 - p.z0;
-    g.box(w, PLATFORM_Y, d, (p.x0 + p.x1) / 2, PLATFORM_Y / 2, (p.z0 + p.z1) / 2, 0x8a8478, { grad: 0.2 });
-    g.box(w, 0.06, 0.3, (p.x0 + p.x1) / 2, PLATFORM_Y + 0.03, p.z0 + 0.15, 0xd8c040);
-    for (let x = p.x0 + 2; x < p.x1; x += 4) g.box(0.08, 0.02, d - 0.6, x, PLATFORM_Y + 0.01, (p.z0 + p.z1) / 2, 0x7a746a);
+    g.box(w, PLATFORM_Y, d, (p.x0 + p.x1) / 2, PLATFORM_Y / 2, (p.z0 + p.z1) / 2, 0x8e887c, { grad: 0.2, pat: PAT.paves });
+    g.box(w, 0.08, 0.5, (p.x0 + p.x1) / 2, PLATFORM_Y + 0.02, p.z0 + 0.25, 0xb0aa9c, { pat: PAT.pierre });
+    g.box(w, 0.06, 0.22, (p.x0 + p.x1) / 2, PLATFORM_Y + 0.05, p.z0 + 0.62, 0xd8c040);
     // escaliers d'accès
     for (const x of [p.x0 + 1, p.x1 - 1]) {
       for (let i = 0; i < 3; i++) g.box(2, 0.33, 0.6, x, 0.17 + i * 0.33 - 0.17, p.z1 + 0.3 + (2 - i) * 0.6 - 0.6, 0x7a746a);
@@ -346,20 +355,30 @@ export class StationBuilder {
     const { x, z, w, d } = spec;
     const h = spec.h ?? 3.4;
     const wall = spec.wall ?? 0x8a7a66;
-    const floor = spec.floor ?? 0x6a5a4a;
-    const roofC = spec.roof ?? 0x5a3a2e;
     const rect = { x0: x - w / 2, z0: z - d / 2, x1: x + w / 2, z1: z + d / 2 };
     const inner = { x0: rect.x0 + 0.25, z0: rect.z0 + 0.25, x1: rect.x1 - 0.25, z1: rect.z1 - 0.25 };
     this.reserve({ x0: rect.x0 - 1, z0: rect.z0 - 1, x1: rect.x1 + 1, z1: rect.z1 + 1 });
+    // habillage : tirages visuels séparés (n'altèrent pas la génération de la gare)
+    const vr = new Rng(`${this.stationId}:${id}:${spec.name}:art`);
+    const styleId = wallStyleFor(spec, vr);
+    const style = STYLES[styleId];
+    const roofKind = spec.ruined ? 'aucun' : roofKindFor(spec, styleId, vr);
+    const roofPat = roofPatFor(roofKind, styleId, vr);
+    const roofC = spec.roof !== undefined ? enrichRoof(spec.roof, roofKind) : roofColorFor(roofPat, vr);
+    const woodFloor = styleId === 'bois' || styleId === 'grange' || (!!spec.interior && ['maison', 'bar', 'dortoir', 'chapelle', 'boutique'].includes(spec.interior));
+    const floor = spec.floor ?? (woodFloor ? 0x6a5038 : 0x6a645a);
+    const flags = windowFlags(spec, styleId, this.winter, vr);
     const base = new GeoBuilder();
     const front = new GeoBuilder();
     const T = 0.25;
-    base.box(w, 0.12, d, x, 0.06, z, floor, { vary: 0.03 });
+    base.box(w, 0.12, d, x, 0.06, z, floor, { vary: 0.03, pat: woodFloor ? PAT.platelage : PAT.paves });
     const doors = (spec.doors ?? [{ side: 's' as const }]).map((dd) => ({ ...dd, offset: dd.offset ?? 0, width: dd.width ?? 1.6 }));
+    const mainDoor = doors.find((dd) => dd.side === 's') ?? doors[0];
     const wallSide = (side: 'n' | 's' | 'e' | 'w', gb: GeoBuilder) => {
-      const along: 'x' | 'z' = side === 'n' || side === 's' ? 'x' : 'z';
+      const f = facade(side, rect, T);
+      const along = f.along;
       const len = along === 'x' ? w : d;
-      const fixed = side === 'n' ? rect.z0 + T / 2 : side === 's' ? rect.z1 - T / 2 : side === 'w' ? rect.x0 + T / 2 : rect.x1 - T / 2;
+      const fixed = f.fixed;
       const center = along === 'x' ? x : z;
       const sideDoors = doors.filter((dd) => dd.side === side).sort((a, b) => a.offset - b.offset);
       let cur = -len / 2;
@@ -373,33 +392,43 @@ export class StationBuilder {
         const sl = b - a;
         if (sl <= 0.05) continue;
         const mid = center + (a + b) / 2;
-        const wh = spec.ruined ? h * (0.45 + this.rng.next() * 0.5) : h;
-        if (along === 'x') {
-          gb.box(sl, wh, T, mid, wh / 2, fixed, wall, { grad: 0.18, vary: 0.04 });
-          this.colliders.addRect(center + a, fixed - T / 2, center + b, fixed + T / 2, 'wall');
-        } else {
-          gb.box(T, wh, sl, fixed, wh / 2, mid, wall, { grad: 0.18, vary: 0.04 });
-          this.colliders.addRect(fixed - T / 2, center + a, fixed + T / 2, center + b, 'wall');
-        }
+        if (spec.ruined) {
+          // l'ancien tirage de hauteur est conservé pour ne pas décaler la génération
+          this.rng.next();
+          ruinedWall(gb, f, center + a, center + b, h, T, wall, style.pat, vr);
+        } else fbox(gb, f, mid, h / 2, 0, sl, h, T, wall, { grad: 0.18, vary: 0.04, pat: style.pat });
+        if (along === 'x') this.colliders.addRect(center + a, fixed - T / 2, center + b, fixed + T / 2, 'wall');
+        else this.colliders.addRect(fixed - T / 2, center + a, fixed + T / 2, center + b, 'wall');
+        // soubassement
+        if (style.plinth !== null) fbox(gb, f, mid, 0.28, 0, sl, 0.56, T + 0.1, style.plinth, { vary: 0.03, pat: style.plinthPat });
+        // corniche
+        if (!spec.ruined && roofKind !== 'plat') fbox(gb, f, mid, h - 0.1, 0.02, sl + 0.02, 0.22, T + 0.12, shade(style.trim, styleId === 'bois' || styleId === 'tole' ? 1 : 0.92));
         // fenêtres
         if (spec.windows !== false && sl > 2.6 && !spec.ruined) {
           const nWin = Math.floor(sl / 3);
           for (let i = 0; i < nWin; i++) {
             const off = a + (sl * (i + 0.5)) / nWin;
             const lit = !spec.dark && this.rng.chance(0.5);
-            if (lit) gb.layer('glow');
-            if (along === 'x') gb.box(1.1, 0.9, T + 0.04, center + off, 1.9, fixed, lit ? 0xffd28a : 0x2a3440);
-            else gb.box(T + 0.04, 0.9, 1.1, fixed, 1.9, center + off, lit ? 0xffd28a : 0x2a3440);
-            gb.layer('base');
+            windowArt(gb, f, center + off, { style, lit, T, shutter: flags.shutter, flowers: side === 's' ? flags.flowers : null });
           }
         }
       }
-      // linteaux et portes
+      // linteaux, encadrements et portes
       for (const dd of sideDoors) {
         const mid = center + dd.offset;
-        if (h > 2.6 && !spec.ruined) {
-          if (along === 'x') gb.box(dd.width, h - 2.5, T, mid, 2.5 + (h - 2.5) / 2, fixed, wall);
-          else gb.box(T, h - 2.5, dd.width, fixed, 2.5 + (h - 2.5) / 2, mid, wall);
+        if (h > 2.6 && !spec.ruined) fbox(gb, f, mid, 2.5 + (h - 2.5) / 2, 0, dd.width, h - 2.5, T, wall, { pat: style.pat });
+        if (!spec.ruined) {
+          const isMain = dd === mainDoor;
+          const lamp = doorArt(gb, f, mid, {
+            style,
+            T,
+            width: dd.width,
+            h,
+            awning: isMain ? awningFor(spec, vr) : null,
+            sign: isMain && signFor(spec),
+            lamp: isMain && !spec.dark,
+          });
+          if (lamp) this.lights.push({ x: lamp.x, y: lamp.y, z: lamp.z, color: 0xffc070, intensity: 1.4, distance: 7, night: true });
         }
         const doorId = dd.id ?? `${id}:porte:${side}${Math.round(dd.offset)}`;
         const dx = along === 'x' ? mid : fixed;
@@ -411,35 +440,32 @@ export class StationBuilder {
     wallSide('e', base);
     wallSide('w', base);
     wallSide('s', front);
+    if (!spec.ruined) cornerArt(base, front, rect, h, style);
+    // descente d'eau pluviale
+    if (roofKind === 'pignon') front.box(0.12, h + 0.1, 0.12, rect.x1 - 0.45, h / 2, rect.z1 + 0.1, 0x55595e);
     const group = new THREE.Group();
     const baseGroup = base.toGroup();
     const frontGroup = front.toGroup();
     group.add(baseGroup, frontGroup);
     // toit
     const roof = new GeoBuilder();
-    const rt = spec.roofType ?? 'plat';
-    if (rt === 'plat' && !spec.ruined) {
-      roof.box(w + 0.4, 0.25, d + 0.4, x, h + 0.12, z, roofC);
-      roof.box(w + 0.5, 0.35, 0.2, x, h + 0.2, rect.z1 + 0.15, 0x3a3a3a);
-    } else if (rt === 'pignon' && !spec.ruined) {
-      const ang = 0.45;
-      const half = d / 2 + 0.3;
-      const slope = half / Math.cos(ang);
-      roof.box(w + 0.5, 0.18, slope, x, h + Math.sin(ang) * half / 2, z - half / 2, roofC, { rx: ang });
-      roof.box(w + 0.5, 0.18, slope, x, h + Math.sin(ang) * half / 2, z + half / 2, roofC, { rx: -ang });
-      roof.box(T, Math.tan(ang) * half, d, rect.x0 + T / 2, h + Math.tan(ang) * half / 2 - 0.1, z, wall, { rx: 0 });
-      roof.box(T, Math.tan(ang) * half, d, rect.x1 - T / 2, h + Math.tan(ang) * half / 2 - 0.1, z, wall);
-    } else if (rt === 'verre') {
-      roof.layer('glass').box(w, 0.1, d, x, h + 0.05, z, 0xa8d8c8);
-      roof.layer('base');
-      for (let i = 0; i <= Math.floor(w / 2); i++) roof.box(0.1, 0.2, d, rect.x0 + i * 2, h + 0.1, z, 0x5a6a5a);
-    } else if (spec.ruined) {
+    const roofRes = roofArt(roof, { kind: roofKind, x, z, w, d, h, T, wall, wallPat: style.pat, color: roofC, pat: roofPat, trim: style.trim, interior: spec.interior, dark: !!spec.dark, vr });
+    if (spec.ruined) {
       for (let i = 0; i < 3; i++) {
         const pw = w * (0.2 + this.rng.next() * 0.3);
-        roof.box(pw, 0.2, d * 0.4, x + (this.rng.next() - 0.5) * (w - pw), h * 0.7, z + (this.rng.next() - 0.5) * d * 0.5, roofC, { rx: this.rng.range(-0.3, 0.3), rz: this.rng.range(-0.2, 0.2) });
+        roof.box(pw, 0.2, d * 0.4, x + (this.rng.next() - 0.5) * (w - pw), h * 0.7, z + (this.rng.next() - 0.5) * d * 0.5, roofC, { rx: this.rng.range(-0.3, 0.3), rz: this.rng.range(-0.2, 0.2), pat: roofPat });
+      }
+      // charpente calcinée
+      for (let i = 0; i < 3; i++) roof.box(0.22, 0.22, d + 0.4, x + vr.range(-w * 0.4, w * 0.4), h * vr.range(0.55, 0.85), z, 0x2e2622, { rz: vr.range(-0.25, 0.25), rx: vr.range(-0.12, 0.12) });
+      // gravats au pied des murs
+      for (let i = 0; i < Math.round((w + d) / 3); i++) {
+        const onX = vr.chance(w / (w + d));
+        const px = onX ? vr.range(rect.x0, rect.x1) : vr.chance(0.5) ? rect.x0 - 0.5 : rect.x1 + 0.5;
+        const pz = onX ? (vr.chance(0.5) ? rect.z0 - 0.5 : rect.z1 + 0.5) : vr.range(rect.z0, rect.z1);
+        base.dodeca(vr.range(0.18, 0.4), px, 0.1, pz, shade(wall, vr.range(0.7, 0.95)), { sy: 0.6, ry: vr.next() * 6 });
       }
     }
-    if (this.winter && (rt === 'plat' || rt === 'pignon') && !spec.ruined) roof.box(w + 0.3, 0.12, d + 0.3, x, h + (rt === 'pignon' ? 1.2 : 0.3), z, 0xf0f4f7);
+    for (const c of roofRes.chimneys) this.chimneys.push(c);
     const roofGroup = roof.isEmpty ? new THREE.Group() : roof.toGroup();
     group.add(roofGroup);
     this.root.add(group);
