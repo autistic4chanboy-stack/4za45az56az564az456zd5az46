@@ -7,7 +7,8 @@ export type SfxId =
   | 'hit' | 'hitMetal' | 'monsterDie' | 'humanDie' | 'growl' | 'reload' | 'empty' | 'pickup' | 'ui'
   | 'uiOpen' | 'door' | 'locked' | 'unlock' | 'geiger' | 'whistle' | 'chuff' | 'clack' | 'shovel'
   | 'alarm' | 'shield' | 'repair' | 'cough' | 'coin' | 'step' | 'heartbeat' | 'pick' | 'pickFail'
-  | 'beep' | 'error' | 'success' | 'spit' | 'lever' | 'detach' | 'thunder' | 'bite' | 'arcade' | 'build';
+  | 'beep' | 'error' | 'success' | 'spit' | 'lever' | 'detach' | 'thunder' | 'bite' | 'arcade' | 'build'
+  | 'drawer' | 'creak' | 'switch' | 'hum' | 'vend' | 'tv' | 'radio' | 'tune';
 
 interface PlayOpts {
   x?: number;
@@ -400,6 +401,59 @@ export class Audio {
         tone('triangle', 400, 600, 0.15, 0.2, 0.08);
         done(0.25);
         break;
+      case 'drawer':
+        // glissière en bois : frottement qui monte, petit choc en butée
+        noiseBurst(0.22, 'bandpass', 700, 3, 0.35, 1400, 0.01);
+        tone('triangle', 180, 120, 0.06, 0.25, 0.22);
+        done(0.32);
+        break;
+      case 'creak':
+        // gond qui grince
+        tone('sawtooth', 420, 610, 0.28, 0.06, 0, 0.04);
+        tone('sawtooth', 560, 470, 0.2, 0.04, 0.12, 0.03);
+        noiseBurst(0.12, 'lowpass', 900, 0.6, 0.2, 300, 0.01);
+        done(0.4);
+        break;
+      case 'switch':
+        noiseBurst(0.03, 'highpass', 2500, 1, 0.5);
+        tone('square', 1800, 1200, 0.02, 0.06);
+        done(0.06);
+        break;
+      case 'hum':
+        // moteur thermique : battement grave
+        tone('sawtooth', 48, 62, 0.9, 0.12, 0, 0.15);
+        tone('square', 96, 92, 0.9, 0.04, 0, 0.15);
+        noiseBurst(0.9, 'lowpass', 260, 0.8, 0.25, 180, 0.12);
+        done(1.0);
+        break;
+      case 'vend':
+        noiseBurst(0.1, 'bandpass', 500, 2, 0.5);
+        tone('triangle', 220, 140, 0.12, 0.3, 0.12);
+        done(0.3);
+        break;
+      case 'tv':
+        // neige cathodique et voix lointaine
+        noiseBurst(0.5, 'bandpass', 3200, 1.2, 0.12, 2600, 0.02);
+        for (let i = 0; i < 4; i++) tone('square', 180 + Math.random() * 140, 160 + Math.random() * 120, 0.07, 0.025, 0.1 + i * 0.1);
+        done(0.6);
+        break;
+      case 'radio':
+        // recherche de fréquence
+        tone('sine', 300, 1900, 0.5, 0.05);
+        noiseBurst(0.5, 'bandpass', 1800, 2, 0.18, 900, 0.02);
+        done(0.6);
+        break;
+      case 'tune': {
+        // trois notes d'une vieille rengaine
+        const scale = [262, 294, 330, 392, 440, 523];
+        for (let i = 0; i < 3; i++) {
+          const f = scale[Math.floor(Math.random() * scale.length)];
+          tone('triangle', f, f, 0.32, 0.07, i * 0.3, 0.02);
+        }
+        tone('sine', 131, 131, 0.9, 0.05);
+        done(1.0);
+        break;
+      }
     }
   }
 

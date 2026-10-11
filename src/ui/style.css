@@ -475,3 +475,19 @@ h1, h2, h3, h4 { font-weight: 600; letter-spacing: 0.05em; }
 .hud-weapon .ammo { font-family: var(--font-display); font-size: 32px; line-height: 1; font-weight: 400; }
 .paper { border-radius: 0; clip-path: var(--notch4); font-family: var(--font-body); font-size: 17px; }
 .vignette.hurt { background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 20, 10, 0.5) 100%); }
+
+/* fouille : compartiments (tiroirs, portes, couvercles) */
+.comp { border: 2px solid var(--ink); background: #1a1612; box-shadow: inset 0 0 0 2px #2e2620; padding: 6px 8px; clip-path: var(--notch); }
+.comp.open { background: #221c16; box-shadow: inset 0 0 0 2px #4a3e31; }
+.comp-head { font-size: 15px; min-height: 26px; }
+.comp .list { margin-top: 6px; }
+.comp-flavor { font-style: italic; padding: 2px 4px; }
+
+/* écran d'ordinateur */
+.terminal { background: #07110a; color: #7dff8a; font-family: 'Courier New', monospace; font-size: 15px; line-height: 1.45; padding: 12px 14px; min-height: 220px; border: 2px solid #1c3a22; box-shadow: inset 0 0 24px rgba(60, 255, 120, 0.12); text-shadow: 0 0 6px rgba(125, 255, 138, 0.45); display: flex; flex-direction: column; gap: 4px; }
+.term-line { opacity: 0.85; }
+.term-text { white-space: pre-wrap; margin: 8px 0; color: #b8ffc0; }
+.term-item { background: none; border: none; color: #7dff8a; font: inherit; text-align: left; cursor: pointer; padding: 2px 0; }
+.term-item:hover { color: #fff; text-decoration: underline; }
+.bubble.device { background: rgba(20, 28, 40, 0.92); color: #cfe6ff; box-shadow: inset 0 0 0 2px #3a5a7a; font-style: italic; }
+.bubble.device::after { border-top-color: rgba(20, 28, 40, 0.92); }

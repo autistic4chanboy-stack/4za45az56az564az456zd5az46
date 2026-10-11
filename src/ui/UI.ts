@@ -5,7 +5,7 @@ import { openDashboard, type DashTab } from './dashboard';
 import { openDialogue } from './dialoguePanel';
 import { openTrade } from './trade';
 import { openKeypad, openLockpick, openArcade } from './minigames';
-import { openContainer, openNote, openStory, eventDialog, chooseWeaponSwap, openPerkChoice, openWorkbench } from './misc';
+import { openContainer, openTerminal, openNote, openStory, eventDialog, chooseWeaponSwap, openPerkChoice, openWorkbench, type ContainerHooks } from './misc';
 import { openCab } from './cab';
 import { buildTrainInteractables } from './trainInteract';
 import type { Game } from '../game/Game';
@@ -292,6 +292,22 @@ export class UI {
       el.style.top = `${p.y}px`;
       el.style.display = p.visible ? 'block' : 'none';
     }
+    // appareils qui parlent (télévision, radio, juke-box)
+    const speakers = (g.level as { speakers?: { id: string; x: number; y: number; z: number; text: string }[] } | null)?.speakers ?? [];
+    for (const sp of speakers) {
+      seen.add(sp.id);
+      let el = this.bubbleEls.get(sp.id);
+      if (!el) {
+        el = h('div', { class: 'bubble device' });
+        this.bubbleLayer.appendChild(el);
+        this.bubbleEls.set(sp.id, el);
+      }
+      if (el.textContent !== sp.text) el.textContent = sp.text;
+      const p = eng.rig.project(sp.x, sp.y + 1.2, sp.z, W, H);
+      el.style.left = `${p.x}px`;
+      el.style.top = `${p.y}px`;
+      el.style.display = p.visible ? 'block' : 'none';
+    }
     for (const [id, el] of this.bubbleEls) {
       if (!seen.has(id)) {
         el.remove();
@@ -327,8 +343,15 @@ export class UI {
     openDialogue(this, this.game, a);
   }
 
-  openContainer(c: ContainerSpec, onClose: () => void): void {
-    openContainer(this, this.game, c, onClose);
+  openContainer(c: ContainerSpec, hooks: Omit<ContainerHooks, 'isOpen'>): void {
+    const lv = this.game.level;
+    const opened = (id: string) => !!lv && 'delta' in lv && !!(lv as { delta: { drawers?: string[] } }).delta.drawers?.includes(id);
+    openContainer(this, this.game, c, { ...hooks, isOpen: (comp) => opened(comp.id) });
+  }
+
+  openTerminal(title: string, messages: { title: string; text: string; reveals?: { door: string; code: string } }[]): void {
+    const station = this.game.state.map.current;
+    openTerminal(this, this.game, title, messages, station);
   }
 
   openTrade(node: MapNode, focus: ResourceId | null = null, onClose?: () => void): void {

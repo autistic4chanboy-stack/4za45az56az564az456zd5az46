@@ -60,6 +60,14 @@ export const PAT = {
   platelage: 11,
   /** Pavés. */
   paves: 12,
+  /** Papier peint à rayures (murs intérieurs). */
+  papier: 13,
+  /** Carrelage (sols de cuisine, salle de bain, laboratoire…). */
+  carrelage: 14,
+  /** Surface lumineuse, non éclairée (lampes, écrans, voyants). */
+  lumiere: 100,
+  /** Vitre : reflets du ciel le jour, lueur la nuit si la couleur est vive. */
+  vitre: 101,
 } as const;
 
 export interface ToonOptions {
@@ -85,6 +93,8 @@ uniform float uSnow;
 uniform vec3 uSnowColor;
 uniform float uLightBands;
 uniform float uSand;
+uniform float uNightGlow;
+uniform vec3 uSkyTint;
 varying vec3 vTWorld;
 varying vec3 vTLocal;
 float toonSunShadow = 1.0;
@@ -192,6 +202,13 @@ vec3 toonPattern( vec3 col, float id, vec3 p, vec3 n ) {
       k = 1.0 + ( tHash( vec2( floor( cc ), floor( r ) ) ) - 0.5 ) * 0.07;
       k *= 1.0 - step( 0.62, tNoise( vec2( u * 2.2, v * 0.35 ) ) ) * 0.07;
       k *= 1.0 - max( pL( r, fv / 1.6 ), pL( cc, fu / 2.8 ) ) * 0.3 * vis;
+    } else if ( id == 13.0 ) {
+      // papier peint : rayures verticales et semis de petits motifs
+      float cc = u / 0.24;
+      float vis = pVis( fu / 0.24 );
+      k = 1.0 + ( mod( floor( cc ), 2.0 ) * 0.07 - 0.035 ) * vis;
+      float dot2 = step( 0.86, tHash( floor( vec2( u * 5.0, v * 5.0 ) ) ) ) * step( 0.5, fract( cc ) );
+      k *= 1.0 - dot2 * 0.12 * vis;
     } else if ( id == 6.0 || id == 8.0 ) {
       // tôle ondulée : nervures verticales, coulures de rouille
       float cc = u / 0.34;
@@ -246,6 +263,15 @@ vec3 toonPattern( vec3 col, float id, vec3 p, vec3 n ) {
       float vis = pVis( lw );
       k = 1.0 + ( tHash( vec2( row, floor( cc ) ) ) - 0.5 ) * 0.14 * vis;
       k *= 1.0 - max( pL( r, lw ), pL( cc, fwidth( p.x ) / 2.4 ) ) * 0.3 * vis;
+    } else if ( id == 14.0 ) {
+      // carrelage en damier, joints fins
+      float r = p.z / 0.45;
+      float cc = p.x / 0.45;
+      float lw = fwidth( p.z ) / 0.45;
+      float vis = pVis( lw );
+      float chk = mod( floor( r ) + floor( cc ), 2.0 );
+      k = 1.0 + ( chk * 0.16 - 0.08 ) * vis;
+      k *= 1.0 - max( pL( r, lw ), pL( cc, fwidth( p.x ) / 0.45 ) ) * 0.22 * vis;
     } else if ( id == 12.0 ) {
       // pavés en quinconce
       float r = p.z / 0.4;
@@ -358,6 +384,10 @@ vec2 toonWind(vec2 p) {
       .replace(
         '#include <project_vertex>',
         /* glsl */ `vTLocal = transformed;
+#ifdef USE_INSTANCING
+  // instances : coordonnées du monde (motifs à l'échelle, attachés à la pièce qui bouge)
+  vTLocal = ( instanceMatrix * vec4( transformed, 1.0 ) ).xyz;
+#endif
 #ifdef TOON_PATTERN
 vPat = aPat;
 #endif
@@ -392,9 +422,24 @@ gl_Position = projectionMatrix * mvPosition;`,
         /* glsl */ `#include <color_fragment>
 vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
 #ifdef TOON_PATTERN
+  float tEmissive = 0.0;
+  vec3 tEmit = vec3( 0.0 );
   {
     float pid = floor( vPat + 0.5 );
-    if ( pid > 0.0 ) diffuseColor.rgb = toonPattern( diffuseColor.rgb, pid, vTLocal, normalize( cross( dFdx( vTLocal ), dFdy( vTLocal ) ) ) );
+    if ( pid > 99.5 ) {
+      // surfaces lumineuses fusionnées dans la géométrie (lampes, écrans, vitres)
+      vec3 base = diffuseColor.rgb;
+      if ( pid > 100.5 ) {
+        float isLit = step( 0.22, max( base.r, max( base.g, base.b ) ) );
+        vec3 glass = mix( vec3( 0.014, 0.022, 0.035 ), uSkyTint, 0.28 );
+        float f = fract( ( vTLocal.x + vTLocal.z ) * 0.62 - vTLocal.y * 0.55 );
+        float streak = step( f, 0.13 ) + step( abs( f - 0.24 ), 0.03 ) * 0.7;
+        glass += streak * mix( vec3( 0.05 ), uSkyTint * 0.35, 0.5 );
+        base = mix( glass, base, isLit * uNightGlow );
+      }
+      tEmissive = 1.0;
+      tEmit = base;
+    } else if ( pid > 0.0 ) diffuseColor.rgb = toonPattern( diffuseColor.rgb, pid, vTLocal, normalize( cross( dFdx( vTLocal ), dFdy( vTLocal ) ) ) );
   }
 #endif
 #ifdef TOON_GROUND
@@ -441,6 +486,13 @@ vec3 tWN = normalize( cross( dFdx( vTWorld ), dFdy( vTWorld ) ) );
     diffuseColor.rgb = mix( diffuseColor.rgb, uSnowColor, cover * smoothstep( 0.2, 0.6, uSnow ) );
   }
 #endif`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        /* glsl */ `#ifdef TOON_PATTERN
+if ( tEmissive > 0.5 ) outgoingLight = tEmit;
+#endif
+#include <opaque_fragment>`,
       );
   };
   mat.customProgramCacheKey = () => key;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { toonify, windowify } from './toon';
+import { toonify, windowify, PAT } from './toon';
 
 /**
  * GeoBuilder : construit une géométrie low-poly fusionnée avec couleurs de sommets.
@@ -125,17 +125,29 @@ export class GeoBuilder {
   /** Transformation parente optionnelle appliquée à toutes les pièces. */
   parent: THREE.Matrix4 | null = null;
   private rngState = 1;
+  /**
+   * Fusionne les calques 'glow' et 'window' dans 'base' : le shader toon les rend
+   * lumineux grâce à leur motif (PAT.lumiere / PAT.vitre). Une draw call par groupe au lieu de trois.
+   */
+  mergeLights = false;
+  /** Découpage spatial (m) des géométries produites, pour que les zones hors champ soient ignorées (0 = aucun). */
+  chunk = 0;
+
+  constructor(opts: { mergeLights?: boolean; chunk?: number } = {}) {
+    this.mergeLights = opts.mergeLights ?? false;
+    this.chunk = opts.chunk ?? 0;
+  }
 
   layer(name: string): this {
     this.current = name;
     return this;
   }
 
-  private getLayer(): Layer {
-    let l = this.layers.get(this.current);
+  private getLayer(name = this.current): Layer {
+    let l = this.layers.get(name);
     if (!l) {
       l = new Layer();
-      this.layers.set(this.current, l);
+      this.layers.set(name, l);
     }
     return l;
   }
@@ -153,7 +165,13 @@ export class GeoBuilder {
 
   /** Ajoute une géométrie de base transformée. */
   private push(base: BaseGeo, matrix: THREE.Matrix4, color: ColorLike, opts?: PartOpts, height = 1): void {
-    const layer = this.getLayer();
+    let layerName = this.current;
+    let pat = opts?.pat ?? 0;
+    if (this.mergeLights && (layerName === 'glow' || layerName === 'window')) {
+      pat = layerName === 'glow' ? PAT.lumiere : PAT.vitre;
+      layerName = 'base';
+    }
+    const layer = this.getLayer(layerName);
     const m = this.parent ? tmpMat.multiplyMatrices(this.parent, matrix) : matrix;
     tmpNormalMat.getNormalMatrix(m);
     const n = base.pos.length;
@@ -161,7 +179,6 @@ export class GeoBuilder {
     layer.nor.ensure(n);
     layer.col.ensure(n);
     layer.pat.ensure(n / 3);
-    const pat = opts?.pat ?? 0;
     if (pat) layer.hasPat = true;
     const c = toColor(color);
     let r = c.r;
@@ -293,19 +310,77 @@ export class GeoBuilder {
     return this;
   }
 
-  /** Construit les géométries par calque. */
+  /** Construit les géométries par calque (et par cellule si le découpage spatial est actif). */
   build(): Map<string, THREE.BufferGeometry> {
     const out = new Map<string, THREE.BufferGeometry>();
-    for (const [name, l] of this.layers) {
-      if (l.pos.length === 0) continue;
+    const make = (pos: Float32Array, nor: Float32Array, col: Float32Array, pat: Float32Array | null) => {
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(l.pos.view(), 3));
-      g.setAttribute('normal', new THREE.BufferAttribute(l.nor.view(), 3));
-      g.setAttribute('color', new THREE.BufferAttribute(l.col.view(), 3));
-      if (l.hasPat) g.setAttribute('aPat', new THREE.BufferAttribute(l.pat.view(), 1));
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      if (pat) g.setAttribute('aPat', new THREE.BufferAttribute(pat, 1));
       g.computeBoundingSphere();
       g.computeBoundingBox();
-      out.set(name, g);
+      return g;
+    };
+    for (const [name, l] of this.layers) {
+      if (l.pos.length === 0) continue;
+      if (this.chunk <= 0) {
+        out.set(name, make(l.pos.view(), l.nor.view(), l.col.view(), l.hasPat ? l.pat.view() : null));
+        continue;
+      }
+      // répartition des triangles par cellule selon leur centre (les triangles restent entiers) ;
+      // clé numérique et cellule précédente en cache : les triangles d'une même boîte se suivent
+      const cells = new Map<number, Layer>();
+      const P = l.pos.data;
+      const N = l.nor.data;
+      const C = l.col.data;
+      const T = l.pat.data;
+      const tris = l.pos.length / 9;
+      const inv = 1 / this.chunk;
+      let lastKey = -1;
+      let c: Layer | undefined;
+      for (let t = 0; t < tris; t++) {
+        const o = t * 9;
+        const kx = Math.floor(((P[o] + P[o + 3] + P[o + 6]) / 3) * inv);
+        const kz = Math.floor(((P[o + 2] + P[o + 5] + P[o + 8]) / 3) * inv);
+        const key = (kx + 512) * 1024 + (kz + 512);
+        if (key !== lastKey || !c) {
+          c = cells.get(key);
+          if (!c) {
+            c = new Layer();
+            cells.set(key, c);
+          }
+          lastKey = key;
+        }
+        c.pos.ensure(9);
+        c.nor.ensure(9);
+        c.col.ensure(9);
+        c.pat.ensure(3);
+        const cp = c.pos.data;
+        const cn = c.nor.data;
+        const cc = c.col.data;
+        const pl = c.pos.length;
+        for (let q = 0; q < 9; q++) {
+          cp[pl + q] = P[o + q];
+          cn[pl + q] = N[o + q];
+          cc[pl + q] = C[o + q];
+        }
+        const ct = c.pat.data;
+        const tl = c.pat.length;
+        ct[tl] = T[t * 3];
+        ct[tl + 1] = T[t * 3 + 1];
+        ct[tl + 2] = T[t * 3 + 2];
+        c.pos.length += 9;
+        c.nor.length += 9;
+        c.col.length += 9;
+        c.pat.length += 3;
+      }
+      for (const [key, cl] of cells) {
+        const kx = Math.floor(key / 1024) - 512;
+        const kz = (key % 1024) - 512;
+        out.set(`${name}|${kx},${kz}`, make(cl.pos.view(), cl.nor.view(), cl.col.view(), l.hasPat ? cl.pat.view() : null));
+      }
     }
     return out;
   }
@@ -313,7 +388,8 @@ export class GeoBuilder {
   /** Construit un groupe de meshes (un par calque) avec les matériaux partagés. */
   toGroup(opts: { castShadow?: boolean; receiveShadow?: boolean; materials?: Partial<Record<string, THREE.Material>> } = {}): THREE.Group {
     const group = new THREE.Group();
-    for (const [name, geo] of this.build()) {
+    for (const [key, geo] of this.build()) {
+      const name = key.split('|')[0];
       const mat = opts.materials?.[name] ?? (geo.getAttribute('aPat') && name === 'base' ? Materials.vcPat : Materials.forLayer(name));
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = opts.castShadow ?? (name === 'base' || name === 'foliage');
@@ -339,6 +415,8 @@ export const Materials = {
   vc: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })),
   /** Variante à motifs procéduraux (planches, briques, tuiles…) pour les géométries portant aPat. */
   vcPat: toonify(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { pattern: true }),
+  /** Pièces mobiles instanciées (couleur par instance, motifs et surfaces lumineuses). */
+  parts: toonify(new THREE.MeshLambertMaterial({ flatShading: true }), { pattern: true }),
   /** Vitres : reflets de jour, lueur la nuit (calque 'window'). */
   window: windowify(new THREE.MeshBasicMaterial({ vertexColors: true })),
   /** Version transparente pour les murs en coupe (bâtiments/wagons). */
@@ -377,7 +455,7 @@ export const Materials = {
   },
 };
 
-for (const m of [Materials.vc, Materials.vcPat, Materials.window, Materials.vcFaded, Materials.foliage, Materials.ground, Materials.water, Materials.glow, Materials.glass, Materials.additive]) m.userData.shared = true;
+for (const m of [Materials.vc, Materials.vcPat, Materials.parts, Materials.window, Materials.vcFaded, Materials.foliage, Materials.ground, Materials.water, Materials.glow, Materials.glass, Materials.additive]) m.userData.shared = true;
 
 const waterMats = new Map<number, THREE.MeshLambertMaterial>();
 /** Matériau d'eau d'une couleur donnée (partagé). */

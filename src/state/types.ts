@@ -205,6 +205,16 @@ export interface StationDelta {
   stock: TraderStock | null;
   /** Temps passé à quai (s), pour les gares irradiées. */
   dwell: number;
+  /** Compartiments ouverts (tiroirs tirés, portes de placard ouvertes). */
+  drawers?: string[];
+  /** Compartiments vidés. */
+  emptied?: string[];
+  /** Appareils allumés (télévision, radio, lampes…). */
+  devices?: Record<string, boolean>;
+  /** Groupe électrogène démarré. */
+  power?: boolean;
+  /** Version du générateur de gares lors de la dernière visite (les identifiants en dépendent). */
+  gen?: number;
 }
 
 export interface Objective {

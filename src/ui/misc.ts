@@ -5,7 +5,7 @@ import { WEAPONS, newWeapon } from '../data/weapons';
 import { PERKS } from '../data/perks';
 import type { Game } from '../game/Game';
 import type { UI } from './UI';
-import type { ContainerSpec } from '../world/stationBuilder';
+import type { ContainerSpec, Compartment } from '../world/stationBuilder';
 import type { LootEntry } from '../world/loot';
 
 function lootIcon(e: LootEntry): HTMLElement {
@@ -25,38 +25,96 @@ function lootIcon(e: LootEntry): HTMLElement {
   }
 }
 
-/** Fouille d'un conteneur. */
-export function openContainer(ui: UI, game: Game, c: ContainerSpec, onClose: () => void): void {
-  const list = h('div', { class: 'list' });
-  const render = () => {
-    clear(list);
-    if (!c.loot.length) {
-      list.append(h('div', { class: 'muted' }, 'Vide.'));
-      return;
+export interface ContainerHooks {
+  /** Le compartiment est-il déjà ouvert ? */
+  isOpen: (comp: Compartment) => boolean;
+  openCompartment: (comp: Compartment) => void;
+  onEmptied: (comp: Compartment) => void;
+  onClose: () => void;
+}
+
+/** Fouille d'un meuble : chaque tiroir, porte ou couvercle s'ouvre séparément. */
+export function openContainer(ui: UI, game: Game, c: ContainerSpec, hooks: ContainerHooks): void {
+  const body = h('div', { class: 'stack' });
+  const single = c.compartments.length === 1;
+  if (single && !hooks.isOpen(c.compartments[0])) hooks.openCompartment(c.compartments[0]);
+  const take = (comp: Compartment, i: number) => {
+    if (game.takeLoot(comp.loot[i])) {
+      comp.loot.splice(i, 1);
+      if (!comp.loot.length) hooks.onEmptied(comp);
     }
-    c.loot.forEach((e, i) => {
-      list.append(h('div', { class: 'item' }, lootIcon(e), h('span', { class: 'grow' }, game.lootName(e)), btn('Prendre', () => {
-        if (game.takeLoot(e)) c.loot.splice(i, 1);
+  };
+  const render = () => {
+    clear(body);
+    for (const comp of c.compartments) {
+      const open = hooks.isOpen(comp);
+      const rows = h('div', { class: 'list' });
+      if (open) {
+        comp.loot.forEach((e, i) => {
+          rows.append(h('div', { class: 'item' }, lootIcon(e), h('span', { class: 'grow' }, game.lootName(e)), btn('Prendre', () => {
+            take(comp, i);
+            render();
+          }, 'small')));
+        });
+        if (comp.note) {
+          const n = comp.note;
+          rows.append(h('div', { class: 'item' }, icon('note', 20, '#e8dcc0'), h('span', { class: 'grow' }, n.title), btn('Lire', () => game.ui.openNote(n.title, n.text), 'small')));
+        }
+        if (!comp.loot.length && !comp.note) rows.append(h('div', { class: 'muted small comp-flavor' }, comp.flavor || 'Vide.'));
+      }
+      if (single) {
+        body.append(rows);
+        continue;
+      }
+      const head = h('div', { class: 'row between comp-head' }, h('span', { class: open ? '' : 'muted' }, comp.name), open ? h('span', { class: 'pill' }, comp.loot.length ? `${comp.loot.length} objet${comp.loot.length > 1 ? 's' : ''}` : 'fouillé') : btn('Ouvrir', () => {
+        hooks.openCompartment(comp);
         render();
-        if (!c.loot.length) window.setTimeout(() => ui.closeModal(), 250);
-      }, 'small')));
-    });
+      }, 'small'));
+      body.append(h('div', { class: `comp ${open ? 'open' : ''}` }, head, open ? rows : null));
+    }
   };
   render();
-  const takeAll = btn('Tout prendre', () => {
-    for (let i = c.loot.length - 1; i >= 0; i--) if (game.takeLoot(c.loot[i])) c.loot.splice(i, 1);
+  const searchAll = () => {
+    for (const comp of c.compartments) if (!hooks.isOpen(comp)) hooks.openCompartment(comp);
+    for (const comp of c.compartments) for (let i = comp.loot.length - 1; i >= 0; i--) take(comp, i);
     render();
-    if (!c.loot.length) window.setTimeout(() => ui.closeModal(), 250);
-  }, 'primary');
+    if (c.compartments.every((k) => !k.loot.length && !k.note)) window.setTimeout(() => ui.closeModal(), 450);
+  };
+  const all = btn(single ? 'Tout prendre' : 'Tout fouiller', searchAll, 'primary');
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'e' || e.key === 'E' || e.key === ' ') {
       e.preventDefault();
-      takeAll.click();
+      all.click();
     }
   };
   window.addEventListener('keydown', onKey);
-  ui.openModal(list, { title: c.name, className: 'narrow', onClose: () => { window.removeEventListener('keydown', onKey); onClose(); } }, [h('span', { class: 'small muted', style: 'margin-right:auto' }, 'E / Espace : tout prendre'), takeAll]);
+  ui.openModal(body, { title: c.name, className: 'narrow', onClose: () => { window.removeEventListener('keydown', onKey); hooks.onClose(); } }, [h('span', { class: 'small muted', style: 'margin-right:auto' }, single ? 'E / Espace : tout prendre' : 'E / Espace : tout fouiller'), all]);
   game.emit({ type: 'container', id: c.id });
+}
+
+/** Écran d'ordinateur : courriels et journaux, parfois un code. */
+export function openTerminal(ui: UI, game: Game, title: string, messages: { title: string; text: string; reveals?: { door: string; code: string } }[], station: string): void {
+  const screen = h('div', { class: 'terminal' });
+  const list = () => {
+    clear(screen);
+    screen.append(h('div', { class: 'term-line' }, '> CONNEXION LOCALE — RÉSEAU INDISPONIBLE'), h('div', { class: 'term-line' }, `> ${messages.length} message${messages.length > 1 ? 's' : ''} non lu${messages.length > 1 ? 's' : ''}`));
+    messages.forEach((m, i) => {
+      const el = h('button', { class: 'term-item' }, `[${i + 1}] ${m.title}`);
+      el.addEventListener('click', () => read(m));
+      screen.append(el);
+    });
+  };
+  const read = (m: (typeof messages)[number]) => {
+    clear(screen);
+    screen.append(h('div', { class: 'term-line' }, `> ${m.title}`), h('div', { class: 'term-text' }, m.text));
+    if (m.reveals) game.notePickup({ id: `terminal:${m.reveals.door}`, title: m.title, text: m.text, reveals: m.reveals }, station);
+    const back = h('button', { class: 'term-item' }, '[retour]');
+    back.addEventListener('click', list);
+    screen.append(back);
+    game.audio.play('beep', { volume: 0.4 });
+  };
+  list();
+  ui.openModal(screen, { title, className: 'narrow' }, [btn('Éteindre', () => ui.closeModal(), 'primary')]);
 }
 
 export function openNote(ui: UI, title: string, text: string): void {

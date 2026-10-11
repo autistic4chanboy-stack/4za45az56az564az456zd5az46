@@ -30,6 +30,7 @@ const P: Record<string, string> = {
   tent: '<path fill="currentColor" d="M12 3l9 18H3z"/><path d="M12 9l-3 12h6z" fill="#000" fill-opacity=".4"/>',
   flag: '<path d="M5 22V3" stroke="currentColor" stroke-width="2"/><path fill="currentColor" d="M6 4h13l-3 4.5 3 4.5H6z"/>',
   pick: '<path d="M5 20L15 10" stroke="currentColor" stroke-width="2.4"/><path fill="currentColor" d="M10 4c5-2 10 1 11 6-3-3-7-4-11-3z"/>',
+  castle: '<path fill="currentColor" d="M3 21V5h3v3h2V5h3v3h2V5h3v3h2V5h3v16h-6v-5a3 3 0 0 0-6 0v5z"/>',
   city: '<path fill="currentColor" d="M3 21V9h5v12zM9 21V4h6v17zM16 21v-9h5v9z"/><rect x="11" y="7" width="2" height="2" fill="#000" fill-opacity=".4"/><rect x="11" y="11" width="2" height="2" fill="#000" fill-opacity=".4"/>',
   factory: '<path fill="currentColor" d="M3 21V11l5 3v-3l5 3v-3l5 3V3h3v18z"/>',
   nest: '<ellipse cx="12" cy="15" rx="9" ry="5" fill="currentColor"/><circle cx="9" cy="11" r="2.5" fill="currentColor"/><circle cx="14" cy="10" r="3" fill="currentColor"/>',

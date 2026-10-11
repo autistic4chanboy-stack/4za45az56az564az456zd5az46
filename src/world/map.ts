@@ -69,7 +69,7 @@ function dangerOf(n: MapNode): number {
 
 // ---------------------------------------------------------------- mode infini
 
-const SAFE_ARCHETYPES: ArchetypeId[] = ['depot', 'village', 'marche', 'monastere', 'port', 'serre'];
+const SAFE_ARCHETYPES: ArchetypeId[] = ['depot', 'village', 'marche', 'monastere', 'port', 'serre', 'citadelle'];
 
 function archetypeWeight(id: ArchetypeId, biome: BiomeId, layer: number): number {
   const a = ARCHETYPES[id];
@@ -80,6 +80,7 @@ function archetypeWeight(id: ArchetypeId, biome: BiomeId, layer: number): number
   if (id === 'nid' && layer < 3) w *= 0.2;
   if ((id === 'centrale' || id === 'bunker' || id === 'laboratoire') && layer < 4) w *= 0.3;
   if (id === 'depot') w *= 0.8;
+  if (id === 'citadelle') w *= layer < 2 ? 0.4 : 0.9;
   return w;
 }
 

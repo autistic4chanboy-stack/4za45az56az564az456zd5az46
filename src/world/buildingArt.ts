@@ -219,7 +219,7 @@ export function windowArt(g: GeoBuilder, f: Facade, a: number, o: WindowOpts): v
   }
   if (o.flowers !== null) {
     fbox(g, f, a, y - 0.66, ext + 0.12, 1.1, 0.22, 0.24, 0x5a3e2a);
-    g.layer('foliage');
+    // (calque de base : pas de maillage de feuillage en plus pour quelques fleurs)
     for (let i = 0; i < 4; i++) {
       const aa = a - 0.4 + i * 0.27;
       const n = f.fixed + f.out * (ext + 0.14);
@@ -227,7 +227,6 @@ export function windowArt(g: GeoBuilder, f: Facade, a: number, o: WindowOpts): v
       const pz = f.along === 'x' ? n : aa;
       g.sphere(0.13, px, y - 0.48, pz, i % 2 ? o.flowers : 0x4a7a3a, { detail: 0 });
     }
-    g.layer('base');
   }
 }
 

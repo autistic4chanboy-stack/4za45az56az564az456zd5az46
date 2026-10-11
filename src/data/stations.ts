@@ -3,7 +3,8 @@ import type { Rng } from '../core/rng';
 
 export type ArchetypeId =
   | 'depot' | 'village' | 'marche' | 'avantposte' | 'mine' | 'ville' | 'centrale' | 'usine' | 'campbandit' | 'nid'
-  | 'monastere' | 'hopital' | 'laboratoire' | 'port' | 'pompage' | 'triage' | 'bunker' | 'antenne' | 'cimetiere' | 'serre';
+  | 'monastere' | 'hopital' | 'laboratoire' | 'port' | 'pompage' | 'triage' | 'bunker' | 'antenne' | 'cimetiere' | 'serre'
+  | 'citadelle';
 
 export type ServiceId = 'commerce' | 'atelier' | 'wagons' | 'charbon' | 'soins' | 'recrutement' | 'informations' | 'repos';
 export type Hostility = 'sure' | 'neutre' | 'hostile';
@@ -131,6 +132,11 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDef> = {
     id: 'serre', name: 'Serres hydroponiques', desc: 'Des dômes de verre où pousse encore la vie. Vivres et semences.', icon: 'leaf',
     hostility: { sure: 0.75, neutre: 0.25 }, services: ['commerce', 'recrutement', 'repos'], pattern: ['Serres de {n}', 'Jardins de {n}', 'Verger de {n}'],
     biomes: ['plaines', 'marais', 'foret', 'desert'], enemies: ['none'], loot: 0.6, residents: [2, 5], tags: ['vivres', 'semences'],
+  },
+  citadelle: {
+    id: 'citadelle', name: 'Citadelle', desc: 'Une ville entière derrière ses remparts : ruelles serrées, grand-place, garnison… et le courant du secteur. Des centaines de pièces à fouiller.', icon: 'castle',
+    hostility: { sure: 0.6, neutre: 0.4 }, services: ['commerce', 'atelier', 'recrutement', 'soins', 'informations', 'repos'], pattern: ['Citadelle de {n}', '{n}-les-Remparts', 'Fort-{n}', 'Bastide de {n}'],
+    biomes: ['plaines', 'foret', 'montagnes', 'ruines', 'desert', 'toundra'], enemies: ['bandit'], loot: 0.7, residents: [4, 8], tags: ['commerce', 'exploration', 'électricité'],
   },
 };
 

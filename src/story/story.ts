@@ -312,6 +312,7 @@ export class Story {
           g.ui.questBanner('Le Baron est tombé', 'Sans son chef, le Syndicat de la Rouille ne fera plus la loi sur les rails du Nord.');
         }
         if (e.enemy === 'behemoth') this.setFlag('behemoth_mort');
+        if (e.enemy === 'reine' && e.station === 'creux_noir') this.setFlag('reine_creux');
         if (e.station === 'garde_fer') this.countKill('garde_fer');
         break;
       case 'npcDeath':
@@ -518,7 +519,7 @@ export class Story {
           b.g.layer('glow');
           for (let i = 0; i < 7; i++) b.g.sphere(0.25, fx + Math.cos(i) * 1.4, 0.3, fz + Math.sin(i) * 1.4 + 0.5, 0x7affd0);
           b.g.layer('base');
-          b.enemyGroup(['reine'], fx + 6, fz + 5, 0, 'reine');
+          if (!this.flag('reine_creux')) b.enemyGroup(['reine'], fx + 6, fz + 5, 0, 'reine');
           b.lights.push({ x: fx, y: 1, z: fz, color: 0x7affd0, intensity: 3, distance: 8 });
           const mx = gal.inner.x1 - 2.5;
           const mz = gal.inner.z0 + 2.5;
@@ -563,7 +564,7 @@ export class Story {
       case 'fort_rouille': {
         const qg = ctx.named.qg;
         if (qg) {
-          b.enemyGroup(['baron'], (qg.inner.x0 + qg.inner.x1) / 2, (qg.inner.z0 + qg.inner.z1) / 2, 1, 'baron');
+          if (!this.flag('baron_mort')) b.enemyGroup(['baron'], (qg.inner.x0 + qg.inner.x1) / 2, (qg.inner.z0 + qg.inner.z1) / 2, 1, 'baron');
           if (this.flag('isotope_vole')) b.container(qg.inner.x1 - 1.5, qg.inner.z0 + 1.2, 'coffre', [{ kind: 'item', id: 'isotope', qty: 1 }, { kind: 'resource', id: 'jetons', qty: 60 }], { id: 'fort_rouille:isotope', name: 'Coffre du Baron', lock: { kind: 'crochet', difficulty: 2 } });
         }
         if (this.st.npcs.silas?.status === 'parti' && this.st.npcs.silas.stationId === 'fort_rouille') {
@@ -607,8 +608,9 @@ export class Story {
 
   private decoratePolaris(_lv: StationLevel, b: StationBuilder, ctx: GenCtx): void {
     // le laboratoire principal héberge le synthétiseur ; un bâtiment de générateurs et une direction à code
-    const gp = b.findSpot(14, 11, { x0: -110, z0: 12, x1: 60, z1: 76 }) ?? { x: -95, z: 60 };
-    const dp = b.findSpot(12, 10, { x0: -110, z0: 12, x1: 60, z1: 76 }) ?? { x: 50, z: 70 };
+    // emplacements réservés par le générateur du laboratoire (sinon, une place libre)
+    const gp = ctx.spots.annexeA ?? b.findSpot(14, 11, { x0: -110, z0: 12, x1: 60, z1: 76 }) ?? { x: -95, z: 60 };
+    const dp = ctx.spots.annexeB ?? b.findSpot(12, 10, { x0: -110, z0: 12, x1: 60, z1: 76 }) ?? { x: 50, z: 70 };
     const gen = b.building({ x: gp.x, z: gp.z, w: 12, d: 9, name: 'Salle des générateurs', wall: 0xc8c8c4, roof: 0x5a6068, interior: 'atelier', loot: 'industriel', dark: true, doors: [{ side: 'e', offset: 0 }] });
     b.special((gen.inner.x0 + gen.inner.x1) / 2, (gen.inner.z0 + gen.inner.z1) / 2, 'polaris_courant', 'Rétablir le courant', 1.8);
     const dir = b.building({ x: dp.x, z: dp.z, w: 10, d: 8, name: 'Direction', wall: 0xd0d0cc, roof: 0x5a6068, interior: 'bureau', loot: 'tech', doors: [{ side: 'w', offset: 0, lock: { kind: 'code', code: String(this.st.flags.code_polaris) }, id: 'polaris:direction' }] });

@@ -89,10 +89,14 @@ Certains sont des **voleurs**, d'autres des **traîtres** qui sabotent en plein 
 
 ### Les gares
 
-20 types de gares : dépôt, village, marché, avant-poste, mine, ville en ruines, centrale, usine, camp de bandits, nid de monstres, monastère, hôpital, laboratoire, port, station de pompage, gare de triage, bunker, antenne radio, cimetière de locomotives, serres. Elles se répartissent sur 8 biomes : plaines, forêt, désert, toundra, zone irradiée, marais, montagnes, ruines.
+21 types de gares : dépôt, village, marché, avant-poste, mine, ville en ruines, centrale, usine, camp de bandits, nid de monstres, monastère, hôpital, laboratoire, port, station de pompage, gare de triage, bunker, antenne radio, cimetière de locomotives, serres et **citadelle**. Elles se répartissent sur 8 biomes : plaines, forêt, désert, toundra, zone irradiée, marais, montagnes, ruines.
 
 - Gares **sûres**, **neutres** ou **hostiles** (bandits, monstres, infectés, machines).
-- **Tous les bâtiments sont visitables**. Certaines portes demandent un **code** (indiqué sur une note quelque part), un **crochetage** (mini-jeu), une **carte d'accès** ou de la **dynamite**.
+- **Des villes denses** : îlots, rues, ruelles, places, cours et appentis. Selon la gare : corons de mineurs, bidonvilles de tôle, quartiers industriels, souks, cités ouvrières en ruines… jusqu’à 80 bâtiments par gare.
+- **Des forteresses** : remparts de pierre, de béton, de tôle ou palissades, portes gardées, tours d'angle habitables. Fort-Rouille, Garde-Fer, le monastère, le bunker, le laboratoire et la nouvelle **citadelle** (une ville close avec grand-place, mairie, garnison et faubourgs) sont fortifiés ; villages, marchés et villes en ruines le sont parfois.
+- **Tous les bâtiments sont visitables**, découpés en pièces. Certaines portes demandent un **code** (indiqué sur une note, au fond d'un tiroir ou dans un ordinateur), un **crochetage** (mini-jeu), une **carte d'accès** ou de la **dynamite**.
+- **Chaque tiroir, placard et coffre s'ouvre** et se fouille compartiment par compartiment.
+- **Électricité** : certaines gares sont encore sur le réseau, d'autres ont un groupe électrogène à démarrer (3 charbon). Avec du courant, on allume la lumière, la télévision, la radio, le juke-box, on lit les courriels des ordinateurs ou on achète au distributeur.
 - Commerce, ateliers, soins, informations et recrutement.
 - Aiguillages à actionner, quêtes de PNJ, objets et documents à trouver.
 
@@ -134,12 +138,12 @@ src/
   render/    moteur three.js, pipeline pixel art, shaders toon et motifs, terrain, météo, particules, modèles
   data/      données de jeu : objets, armes, wagons, ennemis, biomes, gares, PNJ, équilibrage
   state/     état sérialisable, nouvelle partie, sauvegarde (localStorage + export JSON)
-  world/     cartes (Histoire et Infini), génération des 20 types de gares, collisions, butin
+  world/     cartes (Histoire et Infini), génération des 21 types de gares (quartiers, remparts, intérieurs, mobilier), collisions, butin
   train/     simulation (chaudière, énergie, températures), modèles 3D, logique du train
   game/      orchestration, joueur, ennemis, PNJ, combat, événements, économie, quêtes
   story/     scénario, personnages et dialogues de la quête principale
   ui/        interface DOM : HUD, menus, tableau de bord, dialogues, commerce, mini-jeux
-tests/       tests vitest (simulation, cartes, génération des gares, sauvegarde…)
+tests/       tests vitest (simulation, cartes, génération et praticabilité des gares, sauvegarde…)
 ```
 
 Notes techniques :

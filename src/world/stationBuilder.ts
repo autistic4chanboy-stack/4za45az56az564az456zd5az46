@@ -3,7 +3,7 @@ import { GeoBuilder } from '../render/geo';
 import { CollisionWorld } from './collision';
 import { Rng } from '../core/rng';
 import { rectContains, rectsOverlap, type Rect } from '../core/math';
-import { rollLoot, type LootEntry, type LootProfile } from './loot';
+import type { LootEntry, LootProfile } from './loot';
 import * as P from '../render/props';
 import { Noise2D } from '../core/noise';
 import { buildTerrain, buildGrass, buildFlowers, groundCoverFor, vegetationDensity } from '../render/terrain';
@@ -14,6 +14,10 @@ import type { BiomeId, Season } from '../data/biomes';
 import type { Hazard, BuildingRuntime } from '../game/types';
 import type { NpcGenOpts } from './npcgen';
 import { PAT } from '../render/toon';
+import { PartSet } from '../render/parts';
+import { buildFurniture, Frame, WALL_MOUNTED, type FurnitureKind, type DeviceKind } from './furniture';
+import { rollCompartment } from './searchables';
+import { furnishBuilding } from './interiors';
 import {
   STYLES, wallStyleFor, roofKindFor, roofPatFor, roofColorFor, windowFlags, awningFor, signFor,
   facade, fbox, windowArt, doorArt, cornerArt, roofArt, ruinedWall, shade, enrichRoof, type RoofKind, type WallStyle,
@@ -32,17 +36,40 @@ export interface LockSpec {
 
 export type ContainerKind = 'caisse' | 'armoire' | 'coffre' | 'etagere' | 'frigo' | 'pharmacie' | 'bureau' | 'cadavre' | 'sac' | 'casier' | 'tonneau';
 
+/** Un document lisible (note posée ou trouvée au fond d'un tiroir). */
+export interface NoteData {
+  id: string;
+  title: string;
+  text: string;
+  /** Révèle un code de porte. */
+  reveals?: { door: string; code: string };
+}
+
+/** Un tiroir, une porte de placard, un couvercle… chacun s'ouvre et se fouille séparément. */
+export interface Compartment {
+  id: string;
+  name: string;
+  loot: LootEntry[];
+  /** Pièces animées (indices du PartSet). */
+  parts: number[];
+  /** Ce qu'on y voit quand il n'y a rien d'utile. */
+  flavor: string;
+  note?: NoteData;
+}
+
 export interface ContainerSpec {
   id: string;
   x: number;
   y: number;
   z: number;
-  kind: ContainerKind;
-  loot: LootEntry[];
-  lock?: LockSpec;
-  mesh: THREE.Object3D;
-  lid: THREE.Object3D | null;
+  /** Point d'interaction (devant la façade du meuble). */
+  ix: number;
+  iz: number;
+  kind: FurnitureKind;
   name: string;
+  lock?: LockSpec;
+  compartments: Compartment[];
+  building: string | null;
 }
 
 export interface DoorSpec {
@@ -54,20 +81,33 @@ export interface DoorSpec {
   width: number;
   lock?: LockSpec;
   building: string;
-  pivot: THREE.Group;
+  /** Pièces animées de la porte (vantail, voyant, planches). */
+  parts: number[];
   collider: Rect;
 }
 
-export interface NoteSpec {
-  id: string;
+export interface NoteSpec extends NoteData {
   x: number;
   y: number;
   z: number;
-  title: string;
-  text: string;
-  /** Révèle un code de porte. */
-  reveals?: { door: string; code: string };
   mesh: THREE.Object3D;
+}
+
+/** Alimentation électrique d'une gare. */
+export type PowerMode = 'reseau' | 'groupe' | 'aucun';
+
+export interface DeviceSpec {
+  id: string;
+  kind: DeviceKind;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  building: string | null;
+  screens: number[];
+  screenColor: number;
+  light?: { x: number; y: number; z: number; color: number; intensity: number; distance: number };
+  needsPower: boolean;
 }
 
 export interface LeverSpec {
@@ -166,11 +206,24 @@ export interface BuildingHandle {
 
 export const PLATFORM_Y = 1.0;
 
+const LEGACY_KIND: Record<ContainerKind, FurnitureKind> = {
+  caisse: 'caisse', armoire: 'armoire', coffre: 'coffre', etagere: 'etagere', frigo: 'frigo', pharmacie: 'pharmacie',
+  bureau: 'bureau', cadavre: 'cadavre', sac: 'sac', casier: 'casier', tonneau: 'tonneau',
+};
+
 export class StationBuilder {
   readonly rng: Rng;
   readonly root = new THREE.Group();
   readonly colliders = new CollisionWorld();
-  readonly g = new GeoBuilder();
+  /** Géométrie fixe de la gare, découpée en cellules pour le culling ; lampes et vitres fusionnées. */
+  readonly g = new GeoBuilder({ mergeLights: true, chunk: 40 });
+  /** Pièces mobiles (portes, tiroirs, couvercles, écrans) : un seul InstancedMesh. */
+  readonly parts = new PartSet();
+  readonly devices: DeviceSpec[] = [];
+  /** Courant : réseau en état de marche, groupe électrogène à démarrer, ou rien. */
+  power: PowerMode = 'aucun';
+  /** Indices de verrous à placer une fois tous les bâtiments posés (notes, tiroirs, cartes). */
+  readonly lockHints: { lock: LockSpec; door: string; exclude: BuildingHandle | null; label: string }[] = [];
   readonly buildings: BuildingRuntime[] = [];
   readonly handles: BuildingHandle[] = [];
   readonly doors: DoorSpec[] = [];
@@ -271,6 +324,11 @@ export class StationBuilder {
     this.paved.push(r);
   }
 
+  /** Le point tombe-t-il sur une rue ou une place ? */
+  onPaved(x: number, z: number, margin = 0): boolean {
+    return this.paved.some((r) => rectContains(r, x, z, margin));
+  }
+
   /** Herbe, roseaux et fleurs semés là où rien n'est construit. */
   private plantGroundCover(): void {
     const cover = groundCoverFor(this.biome, this.winter);
@@ -278,12 +336,27 @@ export class StationBuilder {
     const b = this.bounds;
     const area = (b.x1 - b.x0) * (b.z1 - b.z0);
     const clump = new Noise2D(this.groundSeed + 77);
+    // masque des zones bâties, pavées ou réservées (grille de 50 cm) : un test par brin au lieu de centaines
+    const C = 0.5;
+    const cols = Math.ceil((b.x1 - b.x0) / C);
+    const rows = Math.ceil((b.z1 - b.z0) / C);
+    const mask = new Uint8Array(cols * rows);
+    const mark = (r: Rect, m: number) => {
+      const i0 = Math.max(0, Math.floor((r.x0 - m - b.x0) / C));
+      const i1 = Math.min(cols - 1, Math.floor((r.x1 + m - b.x0) / C));
+      const j0 = Math.max(0, Math.floor((r.z0 - m - b.z0) / C));
+      const j1 = Math.min(rows - 1, Math.floor((r.z1 + m - b.z0) / C));
+      for (let j = j0; j <= j1; j++) mask.fill(1, j * cols + i0, j * cols + i1 + 1);
+    };
+    this.occupied.forEach((r, i) => i > 0 && mark(r, 0.2));
+    for (const r of this.paved) mark(r, 0.3);
+    for (const bd of this.buildings) mark(bd.rect, 0.4);
+    mark(this.platform, 0.4);
     const ok = (x: number, z: number): boolean => {
       if (Math.abs(z) < 2.4) return false;
-      if (rectContains(this.platform, x, z, 0.4)) return false;
-      if (this.occupied.some((r, i) => i > 0 && rectContains(r, x, z, 0.2))) return false;
-      if (this.paved.some((r) => rectContains(r, x, z, 0.3))) return false;
-      if (this.buildings.some((bd) => rectContains(bd.rect, x, z, 0.4))) return false;
+      const i = Math.floor((x - b.x0) / C);
+      const j = Math.floor((z - b.z0) / C);
+      if (i < 0 || j < 0 || i >= cols || j >= rows || mask[j * cols + i]) return false;
       return !this.colliders.blocked(x, z, 0.25);
     };
     const sample = (threshold: number) => (rng: Rng) => {
@@ -368,8 +441,10 @@ export class StationBuilder {
     const woodFloor = styleId === 'bois' || styleId === 'grange' || (!!spec.interior && ['maison', 'bar', 'dortoir', 'chapelle', 'boutique'].includes(spec.interior));
     const floor = spec.floor ?? (woodFloor ? 0x6a5038 : 0x6a645a);
     const flags = windowFlags(spec, styleId, this.winter, vr);
-    const base = new GeoBuilder();
-    const front = new GeoBuilder();
+    // murs nord, est et ouest, sol : géométrie fixe de la gare (fusionnée par cellules, peu d'appels de rendu) ;
+    // seuls la façade sud, le toit et les cloisons est-ouest restent à part pour pouvoir s'estomper
+    const base = this.g;
+    const front = new GeoBuilder({ mergeLights: true });
     const T = 0.25;
     base.box(w, 0.12, d, x, 0.06, z, floor, { vary: 0.03, pat: woodFloor ? PAT.platelage : PAT.paves });
     const doors = (spec.doors ?? [{ side: 's' as const }]).map((dd) => ({ ...dd, offset: dd.offset ?? 0, width: dd.width ?? 1.6 }));
@@ -444,11 +519,8 @@ export class StationBuilder {
     // descente d'eau pluviale
     if (roofKind === 'pignon') front.box(0.12, h + 0.1, 0.12, rect.x1 - 0.45, h / 2, rect.z1 + 0.1, 0x55595e);
     const group = new THREE.Group();
-    const baseGroup = base.toGroup();
-    const frontGroup = front.toGroup();
-    group.add(baseGroup, frontGroup);
     // toit
-    const roof = new GeoBuilder();
+    const roof = new GeoBuilder({ mergeLights: true });
     const roofRes = roofArt(roof, { kind: roofKind, x, z, w, d, h, T, wall, wallPat: style.pat, color: roofC, pat: roofPat, trim: style.trim, interior: spec.interior, dark: !!spec.dark, vr });
     if (spec.ruined) {
       for (let i = 0; i < 3; i++) {
@@ -471,172 +543,151 @@ export class StationBuilder {
     this.root.add(group);
     const handle: BuildingHandle = { id, rect, inner, doors: this.doors.filter((dd) => dd.building === id), spec };
     this.handles.push(handle);
-    this.buildings.push({ id, name: spec.name, rect, roof: roofGroup, front: [frontGroup], dark: !!spec.dark, inside: false, fade: 0 });
+    const runtime: BuildingRuntime = { id, name: spec.name, rect, roof: roofGroup, front: [], dark: !!spec.dark, inside: false, fade: 0 };
+    this.buildings.push(runtime);
     if (spec.dark) this.darkRects.push(inner);
     if (spec.hazard) this.hazards.push({ kind: spec.hazard.kind, x, z, r: 0, rect: inner, intensity: spec.hazard.intensity, hidden: spec.hazard.hidden });
-    if (spec.interior) this.furnish(handle, spec.interior, spec.loot ?? 'general', spec.richness ?? 1);
+    // les cloisons est-ouest rejoignent la façade sud : elles s'estompent avec elle quand on est dedans
+    if (spec.interior) this.furnish(handle, spec.interior, spec.loot ?? 'general', spec.richness ?? 1, front);
+    const frontGroup = front.toGroup();
+    group.add(frontGroup);
+    runtime.front.push(frontGroup);
     if (!spec.dark && !spec.ruined) this.lights.push({ x, y: h - 0.6, z, color: 0xffd8a0, intensity: 2.2, distance: Math.max(w, d) + 2, night: true });
     return handle;
   }
 
   door(id: string, x: number, z: number, along: 'x' | 'z', width: number, lock: LockSpec | undefined, building: string, openDir: 1 | -1): DoorSpec {
-    const pivot = new THREE.Group();
-    const gb = new GeoBuilder();
     const color = lock?.kind === 'barricade' ? 0x6b4e35 : lock?.kind === 'carte' || lock?.kind === 'code' ? 0x5a6066 : 0x6b4a32;
-    // la porte pivote sur un bord
-    if (along === 'x') {
-      gb.box(width - 0.05, 2.4, 0.1, width / 2, 1.2, 0, color);
-      if (lock?.kind === 'barricade') {
-        gb.box(width + 0.3, 0.25, 0.14, width / 2, 0.8, 0.08 * openDir, 0x8a6a42, { rz: 0.2 });
-        gb.box(width + 0.3, 0.25, 0.14, width / 2, 1.8, 0.08 * openDir, 0x8a6a42, { rz: -0.25 });
+    // la porte pivote sur un bord ; une barricade arrachée disparaît
+    const hx = along === 'x' ? x - width / 2 : x;
+    const hz = along === 'x' ? z : z - width / 2;
+    const angle = (along === 'x' ? -openDir : openDir) * (Math.PI / 2) * 0.95;
+    const barricade = lock?.kind === 'barricade';
+    const motion = barricade ? { kind: 'efface' as const } : { kind: 'pivot' as const, px: hx, py: 0, pz: hz, ax: 0, ay: 1, az: 0, angle };
+    const P = this.parts;
+    const parts: number[] = [];
+    const metal = lock?.kind === 'carte' || lock?.kind === 'code';
+    if (along === 'x') parts.push(P.box(width - 0.05, 2.4, 0.1, x, 1.2, z, color, { motion, pat: metal ? 0 : PAT.lames }));
+    else parts.push(P.box(0.1, 2.4, width - 0.05, x, 1.2, z, color, { motion, pat: metal ? 0 : PAT.lames }));
+    if (barricade) {
+      for (const [y, r] of [[0.8, 0.2], [1.8, -0.25]] as const) {
+        if (along === 'x') parts.push(P.box(width + 0.3, 0.25, 0.14, x, y, z + 0.08 * openDir, 0x8a6a42, { rz: r, motion }));
+        else parts.push(P.box(0.14, 0.25, width + 0.3, x + 0.08 * openDir, y, z, 0x8a6a42, { rx: r, motion }));
       }
-      pivot.position.set(x - width / 2, 0, z);
     } else {
-      gb.box(0.1, 2.4, width - 0.05, 0, 1.2, width / 2, color);
-      if (lock?.kind === 'barricade') {
-        gb.box(0.14, 0.25, width + 0.3, 0.08 * openDir, 0.8, width / 2, 0x8a6a42, { rx: 0.2 });
-        gb.box(0.14, 0.25, width + 0.3, 0.08 * openDir, 1.8, width / 2, 0x8a6a42, { rx: -0.25 });
-      }
-      pivot.position.set(x, 0, z - width / 2);
+      // poignée
+      if (along === 'x') parts.push(P.box(0.06, 0.06, 0.2, x + width / 2 - 0.2, 1.05, z, 0x2a2420, { motion }));
+      else parts.push(P.box(0.2, 0.06, 0.06, x, 1.05, z + width / 2 - 0.2, 0x2a2420, { motion }));
     }
-    if (lock && lock.kind !== 'barricade') {
+    if (lock && !barricade) {
       const lc = lock.kind === 'carte' ? (lock.color === 'rouge' ? 0xe74c3c : lock.color === 'bleue' ? 0x3498db : lock.color === 'verte' ? 0x2ecc71 : 0xf1c40f) : lock.kind === 'code' ? 0x40ff80 : 0xd0a040;
-      gb.layer('glow');
-      if (along === 'x') gb.box(0.18, 0.18, 0.16, width - 0.25, 1.3, 0.04 * openDir, lc);
-      else gb.box(0.16, 0.18, 0.18, 0.04 * openDir, 1.3, width - 0.25, lc);
-      gb.layer('base');
+      if (along === 'x') parts.push(P.box(0.18, 0.18, 0.16, x + width / 2 - 0.25, 1.3, z + 0.04 * openDir, lc, { motion, pat: PAT.lumiere }));
+      else parts.push(P.box(0.16, 0.18, 0.18, x + 0.04 * openDir, 1.3, z + width / 2 - 0.25, lc, { motion, pat: PAT.lumiere }));
     }
-    pivot.add(gb.toGroup({ castShadow: true }));
-    pivot.userData.openDir = openDir;
-    pivot.userData.along = along;
-    this.root.add(pivot);
     const collider = along === 'x' ? { x0: x - width / 2, z0: z - 0.15, x1: x + width / 2, z1: z + 0.15 } : { x0: x - 0.15, z0: z - width / 2, x1: x + 0.15, z1: z + width / 2 };
-    const spec: DoorSpec = { id, x, z, along, width, lock, building, pivot, collider };
+    const spec: DoorSpec = { id, x, z, along, width, lock, building, parts, collider };
     this.doors.push(spec);
     return spec;
   }
 
   // ------------------------------------------------------------------ conteneurs, notes, objets
 
-  container(x: number, z: number, kind: ContainerKind, loot: LootEntry[], opts: { lock?: LockSpec; ry?: number; y?: number; id?: string; name?: string } = {}): ContainerSpec {
-    const id = opts.id ?? this.nextId('cont');
+  /** Bâtiment en cours d'aménagement (rattache meubles et appareils). */
+  private currentBuilding: string | null = null;
+
+  /**
+   * Pose un meuble : géométrie fixe fusionnée, pièces mobiles, collision, compartiments fouillables
+   * (butin tiré par compartiment) et appareil électrique éventuel. Renvoie le conteneur, s'il y en a un.
+   */
+  furniture(
+    kind: FurnitureKind,
+    x: number,
+    z: number,
+    ry: number,
+    opts: { y?: number; profile?: LootProfile; richness?: number; lock?: LockSpec; id?: string; name?: string; loot?: LootEntry[]; building?: string | null; collide?: boolean } = {},
+  ): ContainerSpec | null {
     const y = opts.y ?? 0;
-    const g = new GeoBuilder();
-    const lidG = new GeoBuilder();
-    let name = 'Caisse';
-    let colliderR = 0.6;
-    switch (kind) {
-      case 'caisse':
-        g.box(1.0, 0.7, 0.7, 0, 0.35, 0, 0x8a6a42, { vary: 0.06 });
-        g.box(1.04, 0.08, 0.74, 0, 0.12, 0, 0x5a4428);
-        lidG.box(1.04, 0.12, 0.74, 0, 0.06, 0.37, 0x7a5a38);
-        name = 'Caisse';
-        break;
-      case 'coffre':
-        g.box(1.0, 0.55, 0.65, 0, 0.27, 0, 0x5a3a22);
-        g.box(1.04, 0.06, 0.68, 0, 0.45, 0, 0xc9a040);
-        lidG.box(1.02, 0.2, 0.66, 0, 0.1, 0.33, 0x6a4a2a);
-        name = 'Coffre';
-        break;
-      case 'armoire':
-        g.box(1.0, 2.0, 0.55, 0, 1.0, 0, 0x5a4a3a);
-        lidG.box(0.95, 1.9, 0.06, 0.48, 0, 0.0, 0x6a5a48);
-        name = 'Armoire';
-        colliderR = 0.65;
-        break;
-      case 'casier':
-        g.box(0.6, 1.9, 0.5, 0, 0.95, 0, 0x5a6a5a);
-        lidG.box(0.56, 1.8, 0.05, 0.28, 0, 0, 0x6a7a6a);
-        name = 'Casier';
-        colliderR = 0.45;
-        break;
-      case 'etagere':
-        g.box(1.6, 1.9, 0.45, 0, 0.95, 0, 0x6b4e35);
-        for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) g.box(0.25, 0.25, 0.25, -0.55 + j * 0.37, 0.35 + i * 0.6, 0.05, [0xb08040, 0x6a8aa0, 0xa04030, 0x8a8a6a][(i + j) % 4], { vary: 0.1 });
-        name = 'Étagère';
-        colliderR = 0.8;
-        break;
-      case 'frigo':
-        g.box(0.8, 1.8, 0.7, 0, 0.9, 0, 0xd8d8d0);
-        lidG.box(0.78, 1.7, 0.06, 0.39, 0, 0, 0xe8e8e0);
-        name = 'Réfrigérateur';
-        break;
-      case 'pharmacie':
-        g.box(0.9, 1.4, 0.4, 0, 1.3, 0, 0xe8e8e0);
-        g.box(0.4, 0.1, 0.05, 0, 1.5, 0.21, 0xc03030);
-        g.box(0.1, 0.4, 0.05, 0, 1.5, 0.21, 0xc03030);
-        lidG.box(0.86, 1.3, 0.05, 0.43, 0, 0, 0xf0f0e8);
-        name = 'Armoire à pharmacie';
-        break;
-      case 'bureau':
-        g.box(1.5, 0.08, 0.8, 0, 0.78, 0, 0x6b4e35);
-        g.box(0.5, 0.74, 0.75, -0.45, 0.37, 0, 0x5a3e28);
-        g.box(0.1, 0.74, 0.1, 0.65, 0.37, 0.3, 0x5a3e28);
-        g.box(0.1, 0.74, 0.1, 0.65, 0.37, -0.3, 0x5a3e28);
-        name = 'Bureau';
-        colliderR = 0.75;
-        break;
-      case 'cadavre':
-        g.box(0.5, 0.25, 1.6, 0, 0.13, 0, 0x5a4a3a, { ry: 0.3 });
-        g.box(0.3, 0.25, 0.3, 0.2, 0.15, 0.9, 0xc68e62, { ry: 0.3 });
-        name = 'Cadavre';
-        colliderR = 0;
-        break;
-      case 'sac':
-        g.sphere(0.4, 0, 0.3, 0, 0x6a5a3a, { sy: 0.8 });
-        name = 'Sac';
-        colliderR = 0;
-        break;
-      case 'tonneau':
-        g.cyl(0.38, 0.38, 1.0, 0, 0.5, 0, 0x6a4a2a, { seg: 9 });
-        lidG.cyl(0.38, 0.38, 0.06, 0, 0, 0, 0x5a3a20, { seg: 9 });
-        name = 'Tonneau';
-        colliderR = 0.4;
-        break;
+    const spec = buildFurniture(kind, this.g, this.parts, x, z, ry, this.rng, y);
+    const building = opts.building !== undefined ? opts.building : this.currentBuilding;
+    if (spec.blocks !== false && !WALL_MOUNTED.has(kind) && opts.collide !== false && y < 0.5) {
+      const c = Math.abs(Math.cos(ry));
+      const sn = Math.abs(Math.sin(ry));
+      const rx = (c * spec.w + sn * spec.d) / 2;
+      const rz = (sn * spec.w + c * spec.d) / 2;
+      this.colliders.addRect(x - rx, z - rz, x + rx, z + rz, 'prop', spec.cover ?? false);
     }
-    const mesh = g.toGroup();
-    const pivot = new THREE.Group();
-    mesh.position.set(x, y, z);
-    mesh.rotation.y = opts.ry ?? 0;
-    let lid: THREE.Object3D | null = null;
-    if (!lidG.isEmpty) {
-      lid = lidG.toGroup();
-      const top = kind === 'caisse' || kind === 'coffre' ? (kind === 'caisse' ? 0.7 : 0.55) : kind === 'tonneau' ? 1.0 : 0;
-      if (kind === 'caisse' || kind === 'coffre' || kind === 'tonneau') {
-        pivot.position.set(0, top, -0.33);
-        lid.position.set(0, 0, kind === 'tonneau' ? 0.33 : 0);
-      } else {
-        const zFront = kind === 'pharmacie' ? 0.2 : kind === 'frigo' ? 0.35 : 0.28;
-        pivot.position.set(kind === 'casier' ? -0.28 : kind === 'pharmacie' ? -0.43 : kind === 'frigo' ? -0.39 : -0.48, kind === 'pharmacie' ? 1.3 : kind === 'casier' ? 0.95 : 0.9 + (kind === 'frigo' ? 0 : 0.1), zFront);
-        lid.position.set(0, 0, 0);
-      }
-      pivot.add(lid);
-      mesh.add(pivot);
+    if (spec.device) {
+      const dv = spec.device;
+      const f = new Frame(x, z, ry, y);
+      this.devices.push({
+        id: this.nextId('app'),
+        kind: dv.kind,
+        name: spec.name,
+        x: f.wx(0, spec.d / 2 + 0.3),
+        y,
+        z: f.wz(0, spec.d / 2 + 0.3),
+        building,
+        screens: dv.screens,
+        screenColor: dv.screenColor,
+        light: dv.light ? { x: f.wx(dv.light.lx, dv.light.lz), y: y + dv.light.ly, z: f.wz(dv.light.lx, dv.light.lz), color: dv.light.color, intensity: dv.light.intensity, distance: dv.light.distance } : undefined,
+        needsPower: dv.needsPower,
+      });
     }
-    this.root.add(mesh);
-    if (colliderR > 0) {
-      if (kind === 'armoire' || kind === 'etagere' || kind === 'bureau' || kind === 'caisse' || kind === 'coffre') {
-        const hw = kind === 'etagere' ? 0.8 : kind === 'bureau' ? 0.75 : 0.5;
-        const hd = kind === 'bureau' ? 0.4 : 0.32;
-        const ry = opts.ry ?? 0;
-        const rx = Math.abs(Math.cos(ry)) * hw + Math.abs(Math.sin(ry)) * hd;
-        const rz = Math.abs(Math.sin(ry)) * hw + Math.abs(Math.cos(ry)) * hd;
-        this.colliders.addRect(x - rx, z - rz, x + rx, z + rz, 'prop');
-      } else this.colliders.addCircle(x, z, colliderR, 'prop');
-    }
-    const c: ContainerSpec = { id, x, y, z, kind, loot, lock: opts.lock, mesh, lid: lid ? pivot : null, name: opts.name ?? name };
+    if (!spec.comps.length) return null;
+    const id = opts.id ?? this.nextId('cont');
+    const profile = opts.profile ?? 'general';
+    const richness = opts.richness ?? 1;
+    const compartments: Compartment[] = spec.comps.map((cd, i) => {
+      const cid = `${id}:${i}`;
+      if (opts.loot) return { id: cid, name: cd.name, loot: i === 0 ? opts.loot : [], parts: cd.parts, flavor: i === 0 ? '' : 'Rien d\'utile.' };
+      const content = rollCompartment(this.rng, cid, cd.theme, cd.size, profile, this.tier, richness, this.lootMult);
+      return { id: cid, name: cd.name, loot: content.loot, parts: cd.parts, flavor: content.flavor, note: content.note };
+    });
+    const fr = new Frame(x, z, ry, y);
+    // point d'interaction juste devant la face avant (même pour un conteneur de 6 m)
+    const reach = spec.d / 2 + 0.3;
+    const c: ContainerSpec = { id, x, y, z, ix: fr.wx(0, reach), iz: fr.wz(0, reach), kind, name: opts.name ?? spec.name, lock: opts.lock, compartments, building };
     this.containers.push(c);
     return c;
   }
 
+  /** Élément de décor qui s'estompe quand le joueur se tient juste derrière (rempart sud, grand mur). */
+  cutaway(rect: Rect, group: THREE.Object3D): void {
+    this.buildings.push({ id: this.nextId('mur'), name: 'Rempart', rect, roof: new THREE.Group(), front: [group], dark: false, inside: false, fade: 0 });
+  }
+
+  /** Point libre le plus proche (pour les ajouts scénarisés posés à des coordonnées fixes). */
+  freeSpotNear(x: number, z: number, r = 0.45, maxDist = 8): { x: number; z: number } {
+    if (!this.colliders.blocked(x, z, r)) return { x, z };
+    for (let ring = 1; ring <= Math.ceil(maxDist / 0.5); ring++) {
+      const d = ring * 0.5;
+      const n = 8 + ring * 2;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const px = x + Math.cos(a) * d;
+        const pz = z + Math.sin(a) * d;
+        if (!this.colliders.blocked(px, pz, r)) return { x: px, z: pz };
+      }
+    }
+    return { x, z };
+  }
+
+  /** Conteneur au contenu imposé (scripts d'histoire, quêtes) ; déplacé s'il tombe dans un meuble ou un mur. */
+  container(x: number, z: number, kind: ContainerKind, loot: LootEntry[], opts: { lock?: LockSpec; ry?: number; y?: number; id?: string; name?: string } = {}): ContainerSpec {
+    const p = this.freeSpotNear(x, z, 0.6);
+    return this.furniture(LEGACY_KIND[kind], p.x, p.z, opts.ry ?? 0, { ...opts, loot })!;
+  }
+
   /** Conteneur avec butin tiré selon un profil. */
   lootContainer(x: number, z: number, kind: ContainerKind, profile: LootProfile, richness = 1, opts: { lock?: LockSpec; ry?: number; y?: number; id?: string } = {}): ContainerSpec {
-    return this.container(x, z, kind, rollLoot(this.rng, profile, this.tier, richness, this.lootMult), opts);
+    return this.furniture(LEGACY_KIND[kind], x, z, opts.ry ?? 0, { ...opts, profile, richness })!;
   }
 
   note(x: number, z: number, title: string, text: string, opts: { y?: number; reveals?: { door: string; code: string }; id?: string } = {}): NoteSpec {
     const id = opts.id ?? this.nextId('note');
     const y = opts.y ?? 0.82;
+    // une note posée au sol ne doit pas finir sous un meuble ou dans un mur
+    if (y < 0.3) ({ x, z } = this.freeSpotNear(x, z, 0.3));
     const g = new GeoBuilder();
     g.layer('glow').box(0.32, 0.02, 0.42, 0, 0, 0, 0xfff4c0, { ry: this.rng.range(-0.4, 0.4) });
     const mesh = g.toGroup({ castShadow: false });
@@ -723,142 +774,38 @@ export class StationBuilder {
 
   // ------------------------------------------------------------------ mobilier intérieur
 
-  private furnish(b: BuildingHandle, kind: InteriorKind, loot: LootProfile, richness: number): void {
+  private furnish(b: BuildingHandle, kind: InteriorKind, loot: LootProfile, richness: number, innerFront: GeoBuilder): void {
     const r = b.inner;
     const g = this.g;
-    const rng = this.rng;
-    const lock = b.spec.containerLock;
-    const doorZones = b.doors.map((d) => ({ x0: d.x - 1.4, z0: d.z - 1.6, x1: d.x + 1.4, z1: d.z + 1.6 }));
-    const clear = (x: number, z: number, hw: number, hd: number) => !doorZones.some((dz) => rectsOverlap(dz, { x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd }));
-    // emplacements le long des murs nord, est et ouest
-    const slots: { x: number; z: number; ry: number }[] = [];
-    for (let x = r.x0 + 1.0; x <= r.x1 - 1.0; x += 1.8) slots.push({ x, z: r.z0 + 0.45, ry: 0 });
-    for (let z = r.z0 + 1.6; z <= r.z1 - 1.4; z += 1.8) {
-      slots.push({ x: r.x0 + 0.45, z, ry: Math.PI / 2 });
-      slots.push({ x: r.x1 - 0.45, z, ry: -Math.PI / 2 });
-    }
-    for (let x = r.x0 + 1.0; x <= r.x1 - 1.0; x += 2.2) slots.push({ x, z: r.z1 - 0.45, ry: Math.PI });
-    rng.shuffle(slots);
-    const usable = slots.filter((s) => clear(s.x, s.z, 0.6, 0.6));
-    const cw = r.x1 - r.x0;
-    const cd = r.z1 - r.z0;
     const cx = (r.x0 + r.x1) / 2;
     const cz = (r.z0 + r.z1) / 2;
-    const nCont = Math.max(1, Math.round((cw * cd) / 26 * richness));
-    let placed = 0;
-    const takeSlot = () => usable.shift();
-    const contKinds: Record<InteriorKind, ContainerKind[]> = {
-      maison: ['armoire', 'caisse', 'frigo', 'coffre'],
-      boutique: ['etagere', 'caisse', 'etagere'],
-      bureau: ['bureau', 'armoire', 'casier'],
-      entrepot: ['caisse', 'caisse', 'tonneau', 'etagere'],
-      caserne: ['casier', 'casier', 'caisse'],
-      armurerie: ['casier', 'coffre', 'caisse'],
-      infirmerie: ['pharmacie', 'armoire', 'casier'],
-      labo: ['armoire', 'casier', 'bureau'],
-      atelier: ['caisse', 'etagere', 'tonneau'],
-      chapelle: ['coffre', 'armoire'],
-      reacteur: ['casier', 'caisse'],
-      cantine: ['frigo', 'etagere', 'caisse'],
-      serre: ['caisse', 'tonneau'],
-      vide: ['caisse', 'cadavre', 'sac'],
-      salle_controle: ['bureau', 'casier'],
-      radio: ['bureau', 'caisse'],
-      garage: ['caisse', 'tonneau', 'etagere'],
-      bar: ['frigo', 'etagere', 'caisse'],
-      dortoir: ['casier', 'coffre', 'armoire'],
-    };
-    // meubles décoratifs selon le type
-    const deco = (s: { x: number; z: number; ry: number }) => {
-      switch (kind) {
-        case 'maison':
-        case 'dortoir':
-          g.box(1.0, 0.45, 2.0, s.x, 0.25, s.z, 0x5a3a28, { ry: s.ry });
-          g.box(0.9, 0.12, 1.9, s.x, 0.52, s.z, 0xb0a890, { ry: s.ry });
-          this.colliders.addCircle(s.x, s.z, 0.75);
-          break;
-        case 'atelier':
-        case 'garage':
-          g.box(1.6, 0.9, 0.8, s.x, 0.45, s.z, 0x5a4a3a, { ry: s.ry });
-          g.box(0.4, 0.4, 0.4, s.x, 1.1, s.z, 0x3a4a5a, { ry: s.ry });
-          this.colliders.addCircle(s.x, s.z, 0.8);
-          break;
-        case 'labo':
-        case 'salle_controle':
-        case 'radio':
-          g.box(1.6, 0.9, 0.8, s.x, 0.45, s.z, 0xb0b4b8, { ry: s.ry });
-          g.layer('glow').box(0.7, 0.45, 0.06, s.x, 1.35, s.z, kind === 'radio' ? 0x60ff80 : 0x60c0ff, { ry: s.ry });
-          g.layer('base');
-          this.colliders.addCircle(s.x, s.z, 0.8);
-          break;
-        case 'chapelle':
-          g.box(1.6, 0.5, 0.5, s.x, 0.25, s.z, 0x6b4e35, { ry: s.ry });
-          this.colliders.addCircle(s.x, s.z, 0.6);
-          break;
-        case 'infirmerie':
-          g.box(1.0, 0.6, 2.0, s.x, 0.3, s.z, 0xd8d8d0, { ry: s.ry });
-          g.box(0.9, 0.12, 1.9, s.x, 0.62, s.z, 0xf0f0f0, { ry: s.ry });
-          this.colliders.addCircle(s.x, s.z, 0.75);
-          break;
-        case 'serre':
-          g.box(1.6, 0.6, 0.9, s.x, 0.3, s.z, 0x5a3a22, { ry: s.ry });
-          g.dodeca(0.45, s.x, 0.95, s.z, 0x4a9a3a, { vary: 0.2 });
-          this.colliders.addCircle(s.x, s.z, 0.8);
-          break;
-        default:
-          P.crate(g, s.x, s.z, 0.9, 0x8a6a42, s.ry);
-          this.colliders.addCircle(s.x, s.z, 0.55);
-      }
-    };
-    while (usable.length && placed < nCont) {
-      const s = takeSlot()!;
-      const ck = rng.pick(contKinds[kind]);
-      this.lootContainer(s.x, s.z, ck, loot, 1, { ry: s.ry, lock: lock && rng.chance(0.6) ? lock : undefined });
-      placed++;
+    this.currentBuilding = b.id;
+    // éléments centraux propres à certains bâtiments
+    if (kind === 'reacteur') {
+      g.cyl(2.2, 2.6, 3.0, cx, 1.5, cz, 0x5a5e58, { seg: 14 });
+      g.layer('glow').cyl(1.6, 1.6, 3.2, cx, 1.6, cz, 0x6aff4a, { seg: 14 });
+      g.layer('base');
+      this.colliders.addCircle(cx, cz, 2.7);
+      this.lights.push({ x: cx, y: 3, z: cz, color: 0x6aff4a, intensity: 4, distance: 16 });
     }
-    const nDeco = Math.min(usable.length, Math.round((cw * cd) / 18));
-    for (let i = 0; i < nDeco; i++) deco(takeSlot()!);
-    // pièce centrale
-    if (cw > 5 && cd > 4 && clear(cx, cz, 1.2, 1.0)) {
-      switch (kind) {
-        case 'maison':
-        case 'cantine':
-        case 'bar':
-        case 'caserne':
-        case 'bureau':
-          g.box(1.8, 0.08, 1.1, cx, 0.78, cz, 0x6b4e35);
-          g.box(0.12, 0.74, 0.12, cx - 0.8, 0.37, cz - 0.45, 0x4a3524);
-          g.box(0.12, 0.74, 0.12, cx + 0.8, 0.37, cz + 0.45, 0x4a3524);
-          g.box(0.12, 0.74, 0.12, cx - 0.8, 0.37, cz + 0.45, 0x4a3524);
-          g.box(0.12, 0.74, 0.12, cx + 0.8, 0.37, cz - 0.45, 0x4a3524);
-          this.colliders.addRect(cx - 0.95, cz - 0.6, cx + 0.95, cz + 0.6, 'prop', false);
-          break;
-        case 'chapelle':
-          g.box(2.2, 1.0, 1.0, cx, 0.5, r.z0 + 1.2, 0xd8d0b8);
-          g.layer('glow').box(0.1, 0.3, 0.1, cx - 0.6, 1.15, r.z0 + 1.2, 0xffd070).box(0.1, 0.3, 0.1, cx + 0.6, 1.15, r.z0 + 1.2, 0xffd070);
+    if (kind === 'serre') {
+      for (let x = r.x0 + 1.6; x < r.x1 - 1.2; x += 2.6) {
+        for (const z of [r.z0 + 1.4, cz, r.z1 - 1.4]) {
+          if (b.doors.some((d) => Math.hypot(d.x - x, d.z - z) < 2.2)) continue;
+          g.box(1.6, 0.6, 0.9, x, 0.3, z, 0x5a3a22);
+          g.layer('foliage').dodeca(0.45, x - 0.35, 0.95, z, 0x4a9a3a, { vary: 0.2 }).dodeca(0.4, x + 0.4, 0.9, z, 0x5aa840, { vary: 0.2 });
           g.layer('base');
-          break;
-        case 'reacteur':
-          g.cyl(2.2, 2.6, 3.0, cx, 1.5, cz, 0x5a5e58, { seg: 14 });
-          g.layer('glow').cyl(1.6, 1.6, 3.2, cx, 1.6, cz, 0x6aff4a, { seg: 14 });
-          g.layer('base');
-          this.colliders.addCircle(cx, cz, 2.7);
-          this.lights.push({ x: cx, y: 3, z: cz, color: 0x6aff4a, intensity: 4, distance: 16 });
-          break;
-        case 'entrepot':
-          for (let i = 0; i < 3; i++) {
-            const px = cx + (i - 1) * 2.4;
-            if (clear(px, cz, 0.6, 0.6)) {
-              P.crate(g, px, cz, 1.1, 0x8a6a42, rng.next());
-              P.crate(g, px, cz + 1.2, 0.9, 0x7a5a38, rng.next());
-              this.colliders.addRect(px - 0.7, cz - 0.7, px + 0.7, cz + 1.8, 'prop');
-            }
+          this.colliders.addRect(x - 0.8, z - 0.45, x + 0.8, z + 0.45, 'prop', false);
+          // caisse dans l'allée, ouverture côté allée
+          if (this.rng.chance(0.3)) {
+            const south = z < cz + 0.1;
+            this.lootContainer(x, z + (south ? 0.9 : -0.9), 'caisse', loot, 0.5, { ry: south ? 0 : Math.PI });
           }
-          break;
-        default:
-          break;
+        }
       }
     }
+    furnishBuilding(this, b, { kind, loot, richness, innerFront, lockContainers: b.spec.containerLock, homey: ['maison', 'bar', 'dortoir', 'boutique', 'cantine'].includes(kind) });
+    this.currentBuilding = null;
   }
 
   // ------------------------------------------------------------------ décor extérieur
@@ -867,7 +814,8 @@ export class StationBuilder {
   scatter(region: Rect, count: number, fn: (g: GeoBuilder, x: number, z: number) => PropCollider, size = 1.5): void {
     for (let i = 0; i < count; i++) {
       const p = this.findSpot(size, size, region, 12, 0.3);
-      if (!p) continue;
+      // rues et places restent dégagées
+      if (!p || this.onPaved(p.x, p.z, size / 2)) continue;
       const c = fn(this.g, p.x, p.z);
       this.addCollider(c);
       this.reserve({ x0: p.x - size / 2, z0: p.z - size / 2, x1: p.x + size / 2, z1: p.z + size / 2 });
@@ -920,7 +868,15 @@ export class StationBuilder {
 
   /** Assemble la géométrie statique. */
   finalize(): void {
+    // les PNJ posés à des coordonnées fixes (scénario, archétypes) sont dégagés des murs et des meubles
+    for (const n of this.npcs) {
+      const p = this.freeSpotNear(n.x, n.z, 0.45, 12);
+      n.x = p.x;
+      n.z = p.z;
+    }
     if (!this.g.isEmpty) this.root.add(this.g.toGroup());
+    const parts = this.parts.build();
+    if (parts) this.root.add(parts);
     this.plantGroundCover();
     // des décors ont pu être posés après les ennemis : on dégage ceux qui se retrouvent emmurés
     for (let i = this.enemies.length - 1; i >= 0; i--) {

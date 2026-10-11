@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { StationBuilder, PLATFORM_Y, type DoorSpec, type ContainerSpec, type NoteSpec, type PickupSpec, type LeverSpec, type SpecialSpec, type LightSpec } from '../world/stationBuilder';
+import { StationBuilder, PLATFORM_Y, type DoorSpec, type ContainerSpec, type NoteSpec, type PickupSpec, type LeverSpec, type SpecialSpec, type LightSpec, type DeviceSpec, type Compartment } from '../world/stationBuilder';
+import { TV_LINES, RADIO_LINES, JUKEBOX_LINES, TERMINAL_MESSAGES } from '../world/searchables';
 import { generateStation, type GenCtx } from '../world/archetypes';
 import { NavGrid, type CollisionWorld, type Collider } from '../world/collision';
 import { BIOMES } from '../data/biomes';
@@ -11,7 +12,7 @@ import { Rng } from '../core/rng';
 import { Enemy } from './enemy';
 import { NpcActor } from './npcActor';
 import { generateNpc } from '../world/npcgen';
-import { emptyStationDelta } from '../state/newGame';
+import { emptyStationDelta, migrateDelta } from '../state/newGame';
 import { trainLength } from '../state/trainState';
 import { FRONT_X } from '../train/Train';
 import type { Level } from './level';
@@ -39,10 +40,18 @@ export class StationLevel implements Level {
   private darkRects: Rect[];
   private lightSpecs: LightSpec[];
   private chimneyT = 0;
+  /** Cheminées qui fument (foyers habités). */
+  private smokers: { x: number; y: number; z: number }[] = [];
   doors = new Map<string, { spec: DoorSpec; open: boolean; collider: Collider | null; anim: number }>();
   containers = new Map<string, ContainerSpec>();
   levers = new Map<string, { spec: LeverSpec; state: number }>();
   private notesById = new Map<string, NoteSpec>();
+  /** Appareils électriques et leur état. */
+  devices: { spec: DeviceSpec; on: boolean; off: number[]; t: number; line: number; talk: number; flicker: number }[] = [];
+  /** Bulles des appareils qui parlent (télévision, radio, juke-box). */
+  speakers: { id: string; x: number; y: number; z: number; text: string }[] = [];
+  /** Bâtiments dont la lumière est allumée (interrupteur + courant). */
+  private litBuildings = new Set<string>();
   private pickupsById = new Map<string, PickupSpec>();
   specials: SpecialSpec[] = [];
 
@@ -51,6 +60,7 @@ export class StationLevel implements Level {
     const st = game.state;
     st.stations[node.id] ??= emptyStationDelta();
     this.delta = st.stations[node.id];
+    migrateDelta(this.delta, node.id);
     const diff = DIFFICULTIES[st.difficulty];
     const rear = FRONT_X - trainLength(st.train);
     const b = new StationBuilder(node.id, node.seed, node.biome, node.season, node.threat, diff.loot, rear, FRONT_X);
@@ -69,6 +79,9 @@ export class StationLevel implements Level {
     this.lightSpecs = b.lights;
     this.hazards = [...b.hazards];
     this.specials = b.specials;
+    const smokeRng = new Rng(`${node.id}:fumees`);
+    const lived = node.hostility === 'hostile' ? 0.12 : node.hostility === 'neutre' ? 0.4 : 0.65;
+    this.smokers = b.chimneys.filter(() => smokeRng.chance(lived));
     const biome = BIOMES[node.biome];
     let weather = new Rng(node.seed + Math.floor(st.time / 720)).pick(biome.weather[node.season]);
     if (st.mode === 'histoire' && node.id === 'cendrebourg' && this.delta.visits === 0) weather = 'clair';
@@ -86,6 +99,7 @@ export class StationLevel implements Level {
     this.setupPickups();
     this.setupLevers();
     this.setupSpecials();
+    this.setupDevices();
     this.nav = new NavGrid(this.bounds.x0, this.bounds.z0, this.bounds.x1, this.bounds.z1, 1);
     this.nav.build(this.colliders, 0.45, (c) => c.tag === 'door' || c.tag === 'water');
     this.spawnEnemies();
@@ -159,54 +173,68 @@ export class StationLevel implements Level {
   private applyDoorVisual(e: { spec: DoorSpec; open: boolean; anim: number }, instant = false): void {
     const target = e.open ? 1 : 0;
     e.anim = instant ? target : e.anim + (target - e.anim) * 0.2;
-    const dir = e.spec.pivot.userData.openDir as number;
-    e.spec.pivot.rotation.y = (e.spec.along === 'x' ? -dir : dir) * e.anim * (Math.PI / 2) * 0.95;
-    if (e.spec.lock?.kind === 'barricade' && e.open) e.spec.pivot.visible = false;
+    if (Math.abs(e.anim - target) < 0.003) e.anim = target;
+    for (const i of e.spec.parts) this.builder.parts.set(i, e.anim, true);
   }
 
   // ------------------------------------------------------------------ conteneurs
 
   private setupContainers(): void {
+    const d = this.delta;
+    d.drawers ??= [];
+    d.emptied ??= [];
+    const parts = this.builder.parts;
     for (const c of this.builder.containers) {
       this.containers.set(c.id, c);
-      const looted = this.delta.looted.includes(c.id);
-      if (looted) {
-        c.loot = [];
-        if (c.lid) c.lid.rotation.x = -1.2;
+      for (const comp of c.compartments) {
+        if (d.emptied.includes(comp.id) || d.looted.includes(c.id)) comp.loot = [];
+        if (d.drawers.includes(comp.id)) for (const pi of comp.parts) parts.set(pi, 1, true);
       }
-      const unlocked = () => !c.lock || this.delta.opened.includes(c.id);
+      const unlocked = () => !c.lock || d.opened.includes(c.id);
+      const searched = () => c.compartments.every((k) => d.drawers!.includes(k.id) && k.loot.length === 0);
       this.interactables.push({
         id: c.id,
-        x: c.x,
+        x: c.ix,
         y: c.y,
-        z: c.z,
+        z: c.iz,
         radius: 1.1,
         kind: 'conteneur',
         label: () => {
-          if (this.delta.looted.includes(c.id) && c.loot.length === 0) return null;
+          if (searched()) return null;
           if (!unlocked()) return this.game.lockLabel(c.lock, c.id, `Fouiller : ${c.name}`);
           return `Fouiller : ${c.name}`;
         },
         hold: () => (!unlocked() && c.lock?.kind === 'barricade' ? 1.2 : 0),
         interact: () => {
-          const open = () => {
-            if (c.lid) c.lid.rotation.x = c.kind === 'caisse' || c.kind === 'coffre' || c.kind === 'tonneau' ? -1.2 : 0;
-            if (c.lid && !(c.kind === 'caisse' || c.kind === 'coffre' || c.kind === 'tonneau')) c.lid.rotation.y = -1.6;
-            this.game.audio.play('door', { x: c.x, z: c.z, pitch: 1.6, volume: 0.5 });
-            this.game.ui.openContainer(c, () => {
-              if (c.loot.length === 0 && !this.delta.looted.includes(c.id)) this.delta.looted.push(c.id);
-            });
-          };
+          const open = () => this.game.ui.openContainer(c, {
+            openCompartment: (comp: Compartment) => this.openCompartment(c, comp),
+            onEmptied: (comp: Compartment) => {
+              if (!d.emptied!.includes(comp.id)) d.emptied!.push(comp.id);
+            },
+            onClose: () => {
+              if (c.compartments.every((k) => k.loot.length === 0) && !d.looted.includes(c.id)) d.looted.push(c.id);
+            },
+          });
           if (unlocked()) open();
           else
             this.game.tryUnlock(c.lock, c.id, 'conteneur', () => {
-              if (!this.delta.opened.includes(c.id)) this.delta.opened.push(c.id);
+              if (!d.opened.includes(c.id)) d.opened.push(c.id);
               open();
             });
         },
         highlight: () => (this.game.player.hasPerk('fouineur') ? 0xffe080 : null),
       });
     }
+  }
+
+  /** Ouvre un compartiment : animation, bruit, mémorisation. */
+  openCompartment(c: ContainerSpec, comp: Compartment): void {
+    const d = this.delta;
+    if (!d.drawers!.includes(comp.id)) d.drawers!.push(comp.id);
+    for (const pi of comp.parts) this.builder.parts.set(pi, 1);
+    const drawer = comp.name.toLowerCase().includes('tiroir');
+    this.game.audio.play(drawer ? 'drawer' : 'creak', { x: c.x, z: c.z, volume: 0.55, pitch: 0.9 + Math.random() * 0.2 });
+    if (comp.note) this.game.notePickup(comp.note, this.node.id);
   }
 
   private setupNotes(): void {
@@ -293,6 +321,220 @@ export class StationLevel implements Level {
         interact: () => this.game.handleSpecial(s, this),
         highlight: () => 0x80d0ff,
       });
+    }
+  }
+
+  // ------------------------------------------------------------------ électricité et appareils
+
+  /** La gare a-t-elle du courant ? (réseau intact, ou groupe électrogène démarré) */
+  get powered(): boolean {
+    return this.builder.power === 'reseau' || (this.builder.power === 'groupe' && !!this.delta.power);
+  }
+
+  private setupDevices(): void {
+    const d = this.delta;
+    d.devices ??= {};
+    const parts = this.builder.parts;
+    const rng = new Rng(this.node.seed).fork('appareils');
+    for (const spec of this.builder.devices) {
+      const off = spec.screens.map((i) => parts.colorOf(i));
+      const on = spec.kind === 'groupe' ? !!d.power : !!d.devices[spec.id];
+      const entry = { spec, on, off, t: rng.next() * 3, line: rng.int(0, 20), talk: 0, flicker: 1 };
+      this.devices.push(entry);
+      this.interactables.push({
+        id: spec.id,
+        x: spec.x,
+        y: spec.y > 0.5 ? 0 : spec.y,
+        z: spec.z,
+        radius: spec.kind === 'interrupteur' ? 0.9 : 1.0,
+        kind: 'machine',
+        label: () => this.deviceLabel(entry),
+        interact: () => this.useDevice(entry),
+        highlight: () => (entry.on ? 0x80ffb0 : null),
+      });
+    }
+    this.refreshDevices();
+  }
+
+  private deviceLabel(e: StationLevel['devices'][number]): string | null {
+    const on = e.on;
+    switch (e.spec.kind) {
+      case 'tv':
+        return on ? 'Éteindre la télévision' : 'Allumer la télévision';
+      case 'radio':
+        return on ? 'Éteindre la radio' : 'Allumer la radio';
+      case 'ordinateur':
+        return e.spec.name === 'Ordinateur' ? 'Utiliser l\'ordinateur' : `Utiliser : ${e.spec.name}`;
+      case 'lampe':
+        return on ? 'Éteindre la lampe' : 'Allumer la lampe';
+      case 'interrupteur':
+        return on ? 'Éteindre la lumière' : 'Allumer la lumière';
+      case 'jukebox':
+        return on ? 'Arrêter le juke-box' : 'Mettre de la musique';
+      case 'distributeur':
+        return this.powered ? 'Distributeur : acheter (3 jetons)' : 'Secouer le distributeur';
+      case 'arcade':
+        return 'Jouer à la borne d\'arcade';
+      case 'groupe':
+        return on ? 'Arrêter le groupe électrogène' : 'Démarrer le groupe électrogène (3 charbon)';
+    }
+  }
+
+  private useDevice(e: StationLevel['devices'][number]): void {
+    const g = this.game;
+    const st = g.state;
+    const spec = e.spec;
+    if (spec.kind === 'groupe') {
+      if (e.on) {
+        e.on = false;
+        this.delta.power = false;
+        g.audio.play('switch', { x: spec.x, z: spec.z });
+        g.ui.toast('Le groupe électrogène s\'arrête. La gare retombe dans le noir.', 'info');
+      } else {
+        if ((st.train.resources.charbon ?? 0) < 3) {
+          g.audio.play('error');
+          g.ui.toast('Il faut 3 charbon (pris dans le tender) pour démarrer le groupe.', 'mauvais');
+          return;
+        }
+        st.train.resources.charbon -= 3;
+        e.on = true;
+        this.delta.power = true;
+        g.audio.play('hum', { x: spec.x, z: spec.z });
+        g.ui.toast('Le groupe électrogène tousse, puis ronronne : le courant revient dans la gare.', 'bon');
+      }
+      this.refreshDevices();
+      return;
+    }
+    if (spec.needsPower && !this.powered) {
+      g.audio.play('switch', { x: spec.x, z: spec.z, pitch: 0.8 });
+      const hint = this.builder.power === 'groupe' ? ' Un groupe électrogène doit bien tourner quelque part…' : this.builder.power === 'aucun' ? ' Ici, le réseau est mort depuis longtemps.' : '';
+      g.ui.toast(`Rien ne se passe : pas de courant.${hint}`, 'info');
+      return;
+    }
+    switch (spec.kind) {
+      case 'ordinateur':
+        e.on = true;
+        this.delta.devices![spec.id] = true;
+        this.refreshDevices();
+        g.audio.play('beep', { x: spec.x, z: spec.z });
+        g.ui.openTerminal(spec.name, this.terminalMessages(spec));
+        return;
+      case 'arcade':
+        g.ui.openArcade();
+        return;
+      case 'distributeur': {
+        if (this.powered) {
+          if ((st.train.resources.jetons ?? 0) < 3) {
+            g.audio.play('error');
+            g.ui.toast('Pas assez de jetons.', 'mauvais');
+            return;
+          }
+          st.train.resources.jetons -= 3;
+          st.train.resources.nourriture = (st.train.resources.nourriture ?? 0) + 1;
+          g.audio.play('vend', { x: spec.x, z: spec.z });
+          g.ui.toast('Clonk ! Une boîte de biscuits tombe. (+1 vivres)', 'bon');
+          return;
+        }
+        const key = `secoue:${spec.id}`;
+        if (this.delta.flags[key]) {
+          g.ui.toast('Il n\'y a plus rien à en tirer.', 'info');
+          return;
+        }
+        this.delta.flags[key] = 1;
+        g.audio.play('hitMetal', { x: spec.x, z: spec.z });
+        if (new Rng(this.node.seed + spec.x * 7 + spec.z).chance(0.5)) {
+          st.train.resources.nourriture = (st.train.resources.nourriture ?? 0) + 2;
+          g.ui.toast('À force de secouer, deux canettes tombent. (+2 vivres)', 'bon');
+        } else g.ui.toast('Rien ne tombe. Il est vide.', 'info');
+        return;
+      }
+      default:
+        e.on = !e.on;
+        this.delta.devices![spec.id] = e.on;
+        g.audio.play('switch', { x: spec.x, z: spec.z });
+        if (e.on && (spec.kind === 'tv' || spec.kind === 'radio')) g.audio.play(spec.kind === 'tv' ? 'tv' : 'radio', { x: spec.x, z: spec.z });
+        this.refreshDevices();
+    }
+  }
+
+  /** Messages d'un ordinateur : courriels d'ambiance, et parfois un code de porte de la gare. */
+  private terminalMessages(spec: DeviceSpec): { title: string; text: string; reveals?: { door: string; code: string } }[] {
+    const rng = new Rng(`${this.node.id}:${spec.id}:terminal`);
+    const out: { title: string; text: string; reveals?: { door: string; code: string } }[] = [];
+    const pool = [...TERMINAL_MESSAGES];
+    rng.shuffle(pool);
+    out.push(...pool.slice(0, rng.int(2, 3)));
+    const coded = this.builder.doors.filter((d) => d.lock?.kind === 'code' && d.lock.code);
+    if (coded.length && rng.chance(0.45)) {
+      const d = rng.pick(coded);
+      out.unshift({ title: 'Codes d\'accès (confidentiel)', text: `Rappel : le digicode du ${this.buildingName(d.building)} est ${d.lock!.code}. Ne pas le noter sur un papier.`, reveals: { door: d.id, code: d.lock!.code! } });
+    }
+    return out;
+  }
+
+  private buildingName(id: string): string {
+    const b = this.builder.handles.find((h) => h.id === id);
+    return b ? `bâtiment « ${b.spec.name} »` : 'local sécurisé';
+  }
+
+  /** Met à jour écrans, voyants et lumières après un changement d'état ou de courant. */
+  refreshDevices(): void {
+    const parts = this.builder.parts;
+    const powered = this.powered;
+    this.litBuildings.clear();
+    for (const e of this.devices) {
+      const live = e.spec.kind === 'groupe' ? true : (powered || !e.spec.needsPower) && (e.on || e.spec.kind === 'distributeur' || e.spec.kind === 'arcade' || (e.spec.kind === 'ordinateur' && e.spec.name !== 'Ordinateur'));
+      e.spec.screens.forEach((pi, k) => {
+        if (e.spec.kind === 'groupe') parts.setColor(pi, k === 0 ? (e.on ? 0x301010 : 0xff3020) : e.on ? 0x40ff60 : 0x103010);
+        else parts.setColor(pi, live ? e.spec.screenColor : e.off[k]);
+      });
+      if (e.spec.kind === 'interrupteur' && e.on && powered && e.spec.building) this.litBuildings.add(e.spec.building);
+    }
+  }
+
+  /** Animation des appareils allumés : écrans qui papillotent, sons, bulles. */
+  private updateDevices(dt: number): void {
+    const parts = this.builder.parts;
+    const powered = this.powered;
+    const p = this.game.player;
+    this.speakers.length = 0;
+    for (const e of this.devices) {
+      const k = e.spec.kind;
+      const live = (powered || !e.spec.needsPower) && e.on;
+      if (k === 'groupe' && e.on) {
+        e.t -= dt;
+        if (e.t <= 0) {
+          e.t = 1.4;
+          if (Math.hypot(e.spec.x - p.x, e.spec.z - p.z) < 25) this.game.audio.play('hum', { x: e.spec.x, z: e.spec.z, volume: 0.5 });
+          this.game.engine.fx.chimney(e.spec.x - 0.6, 1.9, e.spec.z, 0.2, 0.1);
+        }
+        continue;
+      }
+      if (!live || (k !== 'tv' && k !== 'radio' && k !== 'jukebox')) continue;
+      const near = Math.hypot(e.spec.x - p.x, e.spec.z - p.z);
+      e.t -= dt;
+      if (k === 'tv' && e.t <= 0) {
+        // l'écran change de plan : couleur et intensité nouvelles
+        e.t = 0.12 + Math.random() * 0.35;
+        const tint = [0xa8d0ff, 0xe0e8ff, 0x80a0d0, 0xffd8a0, 0xa0ffc0, 0xffa0c0][Math.floor(Math.random() * 6)];
+        for (const pi of e.spec.screens) parts.setColor(pi, tint);
+        e.flicker = 0.6 + Math.random() * 0.5;
+        if (near < 14 && Math.random() < 0.25) this.game.audio.play('tv', { x: e.spec.x, z: e.spec.z, volume: 0.4 });
+      } else if ((k === 'radio' || k === 'jukebox') && e.t <= 0) {
+        e.t = k === 'jukebox' ? 0.9 : 1.6;
+        if (near < 16) this.game.audio.play('tune', { x: e.spec.x, z: e.spec.z, volume: k === 'jukebox' ? 0.7 : 0.45, pitch: 0.8 + Math.random() * 0.5 });
+        if (k === 'jukebox') for (const pi of e.spec.screens) parts.setColor(pi, [0xffb040, 0xff6080, 0x60c0ff, 0xffe060][Math.floor(Math.random() * 4)]);
+      }
+      // ce qu'on entend, au-dessus de l'appareil, quand on est à proximité
+      if (near < 9) {
+        e.talk -= dt;
+        if (e.talk <= 0) {
+          e.talk = 4.5;
+          e.line++;
+        }
+        const lines = k === 'tv' ? TV_LINES : k === 'radio' ? RADIO_LINES : JUKEBOX_LINES;
+        this.speakers.push({ id: e.spec.id, x: e.spec.x, y: e.spec.y + 0.6, z: e.spec.z, text: lines[e.line % lines.length] });
+      }
     }
   }
 
@@ -388,7 +630,12 @@ export class StationLevel implements Level {
   }
 
   darknessAt(x: number, z: number): number {
-    for (const r of this.darkRects) if (rectContains(r, x, z)) return 1;
+    for (const r of this.darkRects) {
+      if (!rectContains(r, x, z)) continue;
+      // un bâtiment sombre dont on a rallumé la lumière n'est plus plongé dans le noir
+      const lit = this.builder.handles.some((h) => this.litBuildings.has(h.id) && rectContains(h.inner, x, z));
+      return lit ? 0.15 : 1;
+    }
     return 0;
   }
 
@@ -402,6 +649,22 @@ export class StationLevel implements Level {
       if (l.night && night < 0.3) continue;
       if (Math.abs(l.x - cx) > 45 || Math.abs(l.z - cz) > 45) continue;
       lights.add(l.x, l.y, l.z, l.color, l.intensity * (l.night ? night : 1), l.distance, 0.5);
+    }
+    const powered = this.powered;
+    for (const e of this.devices) {
+      const L = e.spec.light;
+      if (!L || !e.on || (e.spec.needsPower && !powered)) continue;
+      if (Math.abs(L.x - cx) > 30 || Math.abs(L.z - cz) > 30) continue;
+      lights.add(L.x, L.y, L.z, L.color, L.intensity * (e.spec.kind === 'tv' ? e.flicker : 1), L.distance, 0.9);
+    }
+    // plafonniers des bâtiments éclairés
+    for (const id of this.litBuildings) {
+      const h = this.builder.handles.find((b) => b.id === id);
+      if (!h) continue;
+      const x = (h.rect.x0 + h.rect.x1) / 2;
+      const z = (h.rect.z0 + h.rect.z1) / 2;
+      if (Math.abs(x - cx) > 30 || Math.abs(z - cz) > 30) continue;
+      lights.add(x, (h.spec.h ?? 3.4) - 0.4, z, 0xfff0d0, 3.2, Math.max(h.rect.x1 - h.rect.x0, h.rect.z1 - h.rect.z0) + 3, 0.95);
     }
   }
 
@@ -441,13 +704,21 @@ export class StationLevel implements Level {
         if (inside) this.game.onEnterBuilding(b);
       }
     }
+    this.builder.parts.update(dt);
+    this.updateDevices(dt);
     // fumée des cheminées proches
     this.chimneyT -= dt;
     if (this.chimneyT <= 0) {
       this.chimneyT = 0.22;
       const wind = toonUniforms.uWind.value;
-      for (const c of this.builder.chimneys) {
-        if (Math.abs(c.x - p.x) < 40 && Math.abs(c.z - p.z) < 30) this.game.engine.fx.chimney(c.x, c.y, c.z, wind.x * 2, wind.y * 2);
+      // seules les maisons habitées fument, et seulement les plus proches
+      let n = 0;
+      for (const c of this.smokers) {
+        if (n >= 14) break;
+        if (Math.abs(c.x - p.x) < 40 && Math.abs(c.z - p.z) < 30) {
+          this.game.engine.fx.chimney(c.x, c.y, c.z, wind.x * 2, wind.y * 2);
+          n++;
+        }
       }
     }
     // aiguillages : rien à faire ; dangers temporaires
@@ -465,6 +736,7 @@ export class StationLevel implements Level {
   dispose(): void {
     this.game.scene.remove(this.root);
     disposeObject(this.root);
+    this.builder.parts.dispose();
     for (const e of this.enemies) e.dispose();
     for (const r of this.residents) r.dispose();
     this.enemies = [];
@@ -476,3 +748,4 @@ export class StationLevel implements Level {
     return { x: FRONT_X - 6, z: 4.2 };
   }
 }
+

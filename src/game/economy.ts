@@ -23,6 +23,7 @@ const CHEAP: Partial<Record<ArchetypeId, Partial<Record<ResourceId, number>>>> =
   serre: { nourriture: 0.5 },
   cimetiere: { ferraille: 0.55 },
   triage: { ferraille: 0.8, charbon: 0.8 },
+  citadelle: { balles: 0.8, nourriture: 0.8, cellules: 0.75 },
 };
 
 export class Economy {
@@ -75,7 +76,7 @@ export class Economy {
     const gear = arch.services.includes('commerce') ? rng.shuffle(Object.keys(GEAR)).slice(0, rng.int(1, 3)) : [];
     const tools = arch.services.includes('commerce') ? rng.shuffle(Object.keys(TOOLS)).slice(0, rng.int(1, 2)) : [];
     const equipment: EquipId[] = arch.services.includes('atelier') || node.archetype === 'marche' ? rng.shuffle([...EQUIP_IDS]).slice(0, rng.int(2, 4)) : [];
-    const decor: DecorId[] = node.archetype === 'marche' || node.archetype === 'village' || node.archetype === 'port' ? rng.shuffle([...DECOR_IDS]).slice(0, rng.int(3, 6)) : [];
+    const decor: DecorId[] = node.archetype === 'marche' || node.archetype === 'village' || node.archetype === 'port' || node.archetype === 'citadelle' ? rng.shuffle([...DECOR_IDS]).slice(0, rng.int(3, 6)) : [];
     const wagons: WagonTypeId[] = arch.services.includes('wagons') ? rng.shuffle([...BUYABLE_WAGONS]).slice(0, rng.int(3, 5)) : [];
     const stock: TraderStock = { resources: res, weapons, gear, tools, equipment, decor, wagons, priceMod: 0.9 + rng.next() * 0.25, restock: this.st.time + 1440 };
     this.game.story.adjustStock(node, stock);
@@ -323,7 +324,7 @@ export class Economy {
       case 'cage':
         return d.flags.cage ? null : 'Libérer les prisonniers';
       case 'soins':
-        return `Soins des frères (${this.healCost()} jetons)`;
+        return `${lv.node.archetype === 'monastere' ? 'Soins des frères' : 'Soins du dispensaire'} (${this.healCost()} jetons)`;
       case 'pompe':
         return d.flags.pompe ? 'Pompe réparée' : 'Réparer la pompe (15 ferraille)';
       case 'radio':

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame } from '../src/state/newGame';
+import { createNewGame, emptyStationDelta, migrateDelta, GEN_VERSION } from '../src/state/newGame';
 import { exportSave, importSave } from '../src/state/save';
 import { coalCapacity } from '../src/state/trainState';
 
@@ -41,5 +41,28 @@ describe('sauvegarde', () => {
   it('refuse un fichier invalide', () => {
     expect(importSave('pas du json')).toBeNull();
     expect(importSave(JSON.stringify({ foo: 1 }))).toBeNull();
+  });
+});
+
+describe('gares déjà visitées', () => {
+  it('une nouvelle version du générateur oublie les éléments numérotés mais garde les éléments scénarisés', () => {
+    const d = emptyStationDelta();
+    d.visits = 2;
+    d.looted = ['fort_rouille:cont:12', 'creux_noir:spores', 'fort_rouille:isotope'];
+    d.opened = ['fort_rouille:bat:4:porte:s0', 'fort_rouille:butin'];
+    d.taken = ['fort_rouille:obj:7'];
+    d.killed = ['fort_rouille:en:31'];
+    d.drawers = ['fort_rouille:cont:12:1'];
+    migrateDelta(d, 'fort_rouille');
+    expect(d.looted).toEqual(['creux_noir:spores', 'fort_rouille:isotope']);
+    expect(d.opened).toEqual(['fort_rouille:butin']);
+    expect(d.taken).toEqual([]);
+    expect(d.killed).toEqual([]);
+    expect(d.drawers).toEqual([]);
+    expect(d.gen).toBe(GEN_VERSION);
+    // une seconde passe ne change plus rien
+    d.looted.push('fort_rouille:cont:3');
+    migrateDelta(d, 'fort_rouille');
+    expect(d.looted).toContain('fort_rouille:cont:3');
   });
 });

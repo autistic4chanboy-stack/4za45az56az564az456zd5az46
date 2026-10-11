@@ -22,8 +22,8 @@ describe('intégrité des données', () => {
     for (const [id, eq] of Object.entries(EQUIPMENT)) if (eq.weapon) expect(WEAPONS[eq.weapon], `${id} -> ${eq.weapon}`).toBeDefined();
   });
 
-  it('il y a 20 types de gares, tous dotés d\'un générateur', () => {
-    expect(ARCHETYPE_IDS.length).toBe(20);
+  it('il y a 21 types de gares, tous dotés d\'un générateur', () => {
+    expect(ARCHETYPE_IDS.length).toBe(21);
     for (const id of ARCHETYPE_IDS) expect(GENERATORS[id], id).toBeTypeOf('function');
   });
 

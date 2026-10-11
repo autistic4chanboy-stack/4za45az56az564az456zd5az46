@@ -35,7 +35,7 @@ import { addResource, crewOnBoard, wagonMaxHp, freeBeds } from '../state/trainSt
 import { extendInfiniteMap, findEdge, revealNeighbors } from '../world/map';
 import { clamp, clamp01, damp, lerp, rectContains } from '../core/math';
 import type { LootEntry } from '../world/loot';
-import type { LockSpec, NoteSpec, SpecialSpec, LeverSpec } from '../world/stationBuilder';
+import type { LockSpec, NoteData, SpecialSpec, LeverSpec } from '../world/stationBuilder';
 import type { Level } from './level';
 import type { Actor, DamageSource, Faction, Hazard, Interactable, BuildingRuntime } from './types';
 import type { GameState, NpcState, DiseaseId } from '../state/types';
@@ -1297,15 +1297,21 @@ export class Game implements CombatHost {
     }, 1300);
   }
 
-  readNote(n: NoteSpec, station: string): void {
+  readNote(n: NoteData, station: string): void {
+    this.notePickup(n, station, false);
+    this.ui.openNote(n.title, n.text);
+  }
+
+  /** Un document trouvé (au fond d'un tiroir, sur un écran…) rejoint le journal ; ses codes sont retenus. */
+  notePickup(n: NoteData, station: string, announce = true): void {
     const j = this.state.journal;
     if (!j.notes.some((x) => x.id === n.id)) {
       j.notes.push({ id: n.id, title: n.title, text: n.text, station, time: this.state.time });
       this.gainXp(4);
+      if (announce) this.ui.toast(`Document trouvé : ${n.title}`, 'quete');
     }
     if (n.reveals) j.codes[n.reveals.door] = n.reveals.code;
     this.emit({ type: 'note', id: n.id });
-    this.ui.openNote(n.title, n.text);
   }
 
   lootName(e: LootEntry): string {

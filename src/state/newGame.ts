@@ -109,3 +109,25 @@ export function createNewGame(opts: NewGameOptions): GameState {
 export function newId(state: GameState, prefix = 'n'): string {
   return `${prefix}${state.nextId++}`;
 }
+
+/**
+ * Version du générateur de gares. Les meubles, portes et objets générés sont numérotés dans l'ordre
+ * de création : quand le générateur change, les anciens identifiants ne désignent plus les mêmes choses.
+ */
+export const GEN_VERSION = 2;
+
+/** Oublie l'état des éléments générés par une ancienne version (les éléments scénarisés, à identifiant fixe, sont conservés). */
+export function migrateDelta(d: StationDelta, stationId: string): void {
+  if ((d.gen ?? 1) === GEN_VERSION) return;
+  const esc = stationId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const generated = new RegExp(`^${esc}:(cont|obj|note|bat|app|sp|porte_int|levier|en|grp|mur):\\d+`);
+  const keep = (ids: string[] | undefined) => (ids ?? []).filter((id) => !generated.test(id));
+  d.looted = keep(d.looted);
+  d.opened = keep(d.opened);
+  d.taken = keep(d.taken);
+  d.killed = keep(d.killed);
+  d.drawers = keep(d.drawers);
+  d.emptied = keep(d.emptied);
+  d.devices = {};
+  d.gen = GEN_VERSION;
+}
