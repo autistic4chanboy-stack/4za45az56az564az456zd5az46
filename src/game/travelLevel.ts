@@ -5,7 +5,7 @@ import { Noise2D } from '../core/noise';
 import { Rng } from '../core/rng';
 import * as P from '../render/props';
 import { BIOMES, type BiomeId } from '../data/biomes';
-import { TRAVEL_POOLS, type EnemyId } from '../data/enemies';
+import { ENEMIES, TRAVEL_POOLS, type EnemyId } from '../data/enemies';
 import { BAL, DIFFICULTIES } from '../data/balance';
 import { Enemy } from './enemy';
 import type { Level } from './level';
@@ -65,6 +65,8 @@ export class TravelLevel implements Level {
   private pendingWaves: { t: number; types: EnemyId[]; faction: 'bandit' | 'monstre' }[] = [];
   waveActive = false;
   waveKills = 0;
+  private waveNo = 0;
+  private waveTotal = 0;
   private stopLoot: Interactable[] = [];
   readonly fromBiome: BiomeId;
 
@@ -347,6 +349,8 @@ export class TravelLevel implements Level {
     }
     this.waveActive = true;
     this.waveKills = 0;
+    this.waveNo = 0;
+    this.waveTotal = waves;
   }
 
   private spawnWave(types: EnemyId[]): void {
@@ -367,7 +371,9 @@ export class TravelLevel implements Level {
       e.pickTrainTarget();
       this.enemies.push(e);
     }
-    g.onWaveSpawned(types.length);
+    this.waveNo++;
+    const faction = types.some((t) => ENEMIES[t].faction === 'bandit') ? 'bandit' : 'monstre';
+    g.onWaveSpawned(types.length, this.waveNo, Math.max(this.waveNo, this.waveTotal), side, faction);
   }
 
   // ------------------------------------------------------------------ mise à jour

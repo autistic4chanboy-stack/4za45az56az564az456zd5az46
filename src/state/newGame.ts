@@ -34,6 +34,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
   const loco = createWagon('locomotive', 'w1');
   loco.slots[0] = newSlot('projecteur');
   const tender = createWagon('tender', 'w2');
+  tender.slots[0] = newSlot('mitrailleuse');
   const lits = createWagon('passagers', 'w3');
   lits.slots[0] = newSlot('mitrailleuse');
   lits.decor[0] = 'fanion';

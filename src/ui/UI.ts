@@ -177,12 +177,32 @@ export class UI {
   // ------------------------------------------------------------------ notifications
 
   toast(text: string, kind: ToastKind = 'info'): void {
-    const el = h('div', { class: `toast ${kind}` }, text);
-    this.toastsEl.appendChild(el);
-    while (this.toastsEl.children.length > 5) this.toastsEl.firstElementChild?.remove();
     const dur = Math.min(9000, 3200 + text.length * 35);
-    window.setTimeout(() => el.classList.add('out'), dur);
-    window.setTimeout(() => el.remove(), dur + 450);
+    // message identique déjà affiché : on le prolonge avec un compteur plutôt que de l'empiler
+    const same = [...this.toastsEl.children].find((c) => (c as HTMLElement).dataset.text === text && !c.classList.contains('out')) as HTMLElement | undefined;
+    if (same) {
+      const n = Number(same.dataset.count ?? '1') + 1;
+      same.dataset.count = String(n);
+      same.textContent = `${text} ×${n}`;
+      same.dataset.until = String(performance.now() + dur);
+      return;
+    }
+    const el = h('div', { class: `toast ${kind}` }, text);
+    el.dataset.text = text;
+    el.dataset.until = String(performance.now() + dur);
+    this.toastsEl.appendChild(el);
+    while (this.toastsEl.children.length > 6) this.toastsEl.firstElementChild?.remove();
+    const tick = () => {
+      if (!el.isConnected) return;
+      const left = Number(el.dataset.until) - performance.now();
+      if (left > 0) {
+        window.setTimeout(tick, Math.min(left, 1000));
+        return;
+      }
+      el.classList.add('out');
+      window.setTimeout(() => el.remove(), 450);
+    };
+    window.setTimeout(tick, dur);
   }
 
   floatText(x: number, y: number, z: number, text: string, color: string): void {
@@ -266,6 +286,7 @@ export class UI {
     for (const el of this.bubbleEls.values()) el.remove();
     this.bubbleEls.clear();
     clear(this.bannerLayer);
+    this.hud.markers.clear();
   }
 
   // ------------------------------------------------------------------ délégations

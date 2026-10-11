@@ -171,6 +171,8 @@ export class Engine {
   quality: Quality = 'haute';
   /** 0 = nuit noire, 1 = plein jour (utile pour le gameplay : lumières, peur…) */
   daylight = 1;
+  /** Si vrai, le prochain setEnvironment applique l'ambiance sans transition (changement de niveau). */
+  snapEnv = false;
   private bg = new THREE.Color();
   private tmpC = new THREE.Color();
   private tmpC2 = new THREE.Color();
@@ -246,7 +248,7 @@ export class Engine {
     const twilight = smoothstep(0, 0.25, elev);
     const weatherDim = p.weather === 'tempete' ? 0.45 : p.weather === 'brume' ? 0.6 : p.weather === 'poussiere' ? 0.65 : p.weather === 'pluie' || p.weather === 'neige' || p.weather === 'cendres' ? 0.75 : 1;
     const dl = clamp01(twilight * weatherDim * (1 - p.darkness * 0.85));
-    this.daylight = damp(this.daylight, dl, 2, dt);
+    this.daylight = this.snapEnv ? dl : damp(this.daylight, dl, 2, dt);
 
     const dlv = this.daylight;
     // soleil
@@ -280,8 +282,9 @@ export class Engine {
     else if (p.weather === 'poussiere') { near = 14; far = 80; }
     else if (p.weather === 'neige' || p.weather === 'pluie' || p.weather === 'cendres') { near = 35; far = 120; }
     if (p.darkness > 0.5) { near *= 0.5; far *= 0.6; }
-    this.fog.near = damp(this.fog.near, near, 1.5, dt);
-    this.fog.far = damp(this.fog.far, far, 1.5, dt);
+    this.fog.near = this.snapEnv ? near : damp(this.fog.near, near, 1.5, dt);
+    this.fog.far = this.snapEnv ? far : damp(this.fog.far, far, 1.5, dt);
+    this.snapEnv = false;
   }
 
   render(): void {

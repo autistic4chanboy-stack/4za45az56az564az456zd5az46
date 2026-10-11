@@ -1,7 +1,6 @@
 import { Rng } from '../core/rng';
 import { QUEST_ITEMS, RESOURCES, type ResourceId } from '../data/items';
-import { ARCHETYPES } from '../data/stations';
-import { addResource, crewOnBoard } from '../state/trainState';
+import { addResource } from '../state/trainState';
 import { generateNpc } from '../world/npcgen';
 import type { Game, GameEvent } from './Game';
 import type { QuestState, NpcState, MapNode } from '../state/types';
@@ -14,6 +13,11 @@ type SideKind = 'livraison' | 'recuperation' | 'sauvetage' | 'nettoyage' | 'ravi
 
 /** Quêtes secondaires générées procéduralement (histoire et infini). */
 export class QuestManager {
+  /** Offres en attente (non acceptées) : calculées une seule fois par PNJ, sans effet de bord. */
+  private offers = new Map<string, QuestState | null>();
+  /** PNJ à secourir générés avec l'offre, ajoutés au monde seulement à l'acceptation. */
+  private pendingNpcs = new Map<string, NpcState>();
+
   constructor(private game: Game) {}
 
   private get st() {
@@ -21,7 +25,8 @@ export class QuestManager {
   }
 
   onLoad(): void {
-    /* rien */
+    this.offers.clear();
+    this.pendingNpcs.clear();
   }
 
   active(): QuestState[] {
@@ -49,6 +54,20 @@ export class QuestManager {
     const existing = this.st.quests.find((q) => q.giver === npc.id);
     if (existing) return existing;
     if (npc.storyRole || npc.trader) return null;
+    if (this.offers.has(npc.id)) return this.offers.get(npc.id) ?? null;
+    const q = this.makeOffer(npc);
+    this.offers.set(npc.id, q);
+    return q;
+  }
+
+  /** Vrai si ce PNJ a une quête à proposer (pour le marqueur « ! »). */
+  hasOffer(npc: NpcState): boolean {
+    if (npc.storyRole || npc.trader || npc.status !== 'resident') return false;
+    const q = this.offerFor(npc);
+    return !!q && !this.st.quests.includes(q);
+  }
+
+  private makeOffer(npc: NpcState): QuestState | null {
     const station = npc.stationId;
     if (!station) return null;
     const rng = new Rng(`${this.st.seed}:${npc.id}:quete`);
@@ -59,7 +78,7 @@ export class QuestManager {
     const kind = rng.pick(kinds);
     const hostileTargets = targets.filter((t) => t.hostility !== 'sure');
     const safeTargets = targets.filter((t) => t.hostility !== 'hostile');
-    const id = `sq${this.st.nextId++}`;
+    const id = `sq_${npc.id}`;
     const reward = 35 + rng.int(0, 40) + Math.round((this.st.map.nodes[station]?.threat ?? 1) * 15);
     let q: QuestState | null = null;
     switch (kind) {
@@ -92,7 +111,7 @@ export class QuestManager {
         rescued.recruitable = true;
         rescued.fee = 0;
         rescued.questId = id;
-        this.st.npcs[rescued.id] = rescued;
+        this.pendingNpcs.set(id, rescued);
         q = {
           id, kind: 'secondaire', giver: npc.id, status: 'active', stage: 0, title: `Retrouver ${rescued.name.split(' ')[0]}`,
           desc: `${npc.name} cherche ${rescued.name}, parti${rescued.female ? 'e' : ''} vers ${t.name} et sans nouvelles depuis. « Ramenez-le à bord de votre train, il saura se rendre utile. »`,
@@ -130,6 +149,12 @@ export class QuestManager {
   accept(q: QuestState): void {
     if (this.st.quests.some((x) => x.id === q.id)) return;
     this.st.quests.push(q);
+    this.offers.delete(q.giver ?? '');
+    const rescued = this.pendingNpcs.get(q.id);
+    if (rescued) {
+      this.st.npcs[rescued.id] = rescued;
+      this.pendingNpcs.delete(q.id);
+    }
     if (q.data.kind === 'livraison') this.game.giveItem('colis', 1, true);
     this.game.log(`Nouvelle quête : ${q.title}.`, 'quete');
     this.game.ui.toast(`Quête acceptée : ${q.title}`, 'bon');
@@ -166,7 +191,6 @@ export class QuestManager {
         b.npc({ npcId: id, x: p.x, z: p.z, yaw: 0, role: 'quete' });
       }
     }
-    void lv;
   }
 
   onEvent(e: GameEvent): void {
@@ -223,7 +247,5 @@ export class QuestManager {
         this.game.log(`Quête échouée : ${q.title} (gare dépassée).`, 'mauvais');
       }
     }
-    void crewOnBoard;
-    void ARCHETYPES;
   }
 }

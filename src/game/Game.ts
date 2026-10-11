@@ -188,9 +188,24 @@ export class Game implements CombatHost {
     this.menu.update(dt);
   }
 
+  /** Vue de débogage (tests automatisés) : caméra libre au-dessus d'un point. */
+  debugView: { x: number; z: number; dist: number; pitch: number } | null = null;
+
   private updateCamera(dt: number): void {
     const rig = this.engine.rig;
     const p = this.player;
+    if (this.debugView) {
+      const v = this.debugView;
+      rig.maxDist = 500;
+      rig.setZoom(v.dist, true);
+      rig.pitch = v.pitch;
+      rig.yaw = 0;
+      rig.target.set(v.x, 0, v.z);
+      rig.snap();
+      rig.update(dt);
+      this.engine.scene.fog = null;
+      return;
+    }
     if (this.input.wheel && !this.ui.blocking && !this.input.overUI) rig.zoom(this.input.wheel);
     const mounted = p.mounted;
     if (mounted) rig.target.set(lerp(p.x, mounted.x, 0.5), 1, lerp(p.z, mounted.z, 0.5));
@@ -237,6 +252,14 @@ export class Game implements CombatHost {
         locoHealth,
       });
       let target = res.targetSpeed;
+      if (locoHealth <= 0) {
+        // locomotive hors service : le train s'immobilise jusqu'à réparation
+        target = 0;
+        st.train.throttle = 0;
+      } else if (this.locoDown) {
+        this.locoDown = false;
+        this.ui.toast('La locomotive est réparée : elle peut repartir.', 'bon');
+      }
       if (this.train.shovelBoost > 0) {
         this.train.shovelBoost -= dt;
         target *= 1.08;
@@ -393,6 +416,7 @@ export class Game implements CombatHost {
     this.engine.rig.pitch = 0.98;
     this.state = state;
     this.notified.clear();
+    this.locoDown = false;
     this.train = new Train(this);
     this.scene.add(this.train.group);
     this.combat = new Combat(this.scene, this);
@@ -457,6 +481,7 @@ export class Game implements CombatHost {
     st.stations[id] ??= emptyStationDelta();
     const level = new StationLevel(this, node);
     this.level = level;
+    this.engine.snapEnv = true;
     const delta = st.stations[id];
     const firstVisit = delta.visits === 0;
     delta.visits++;
@@ -489,6 +514,11 @@ export class Game implements CombatHost {
   /** Lance le voyage vers une gare voisine. */
   depart(toId: string): boolean {
     const st = this.state;
+    if (st.location.kind !== 'station' || this.transitioning) return false;
+    if ((st.train.wagons[0]?.hp ?? 0) <= 0) {
+      this.ui.toast('La locomotive est hors service : réparez-la avant de partir.', 'mauvais');
+      return false;
+    }
     const from = st.map.current;
     const edge = findEdge(st.map, from, toId);
     if (!edge) return false;
@@ -511,6 +541,7 @@ export class Game implements CombatHost {
     this.level?.dispose();
     const travel = new TravelLevel(this, st.map.nodes[from], st.map.nodes[toId], edge);
     this.level = travel;
+    this.engine.snapEnv = true;
     st.location = { kind: 'voyage', from, to: toId, progress: 0, length: edge.length, eventsDone: [] };
     st.train.throttle = 2;
     this.train.speed = 0.5;
@@ -534,8 +565,11 @@ export class Game implements CombatHost {
       this.ui.toast(`Arrivée en gare de ${travel.to.name}…`, 'info');
       this.audio.play('whistle', { volume: 0.6 });
     }
-    if (this.arrivalBrake && v < 0.3) this.train.speed = Math.max(this.train.speed, 0.8);
-    if (remaining <= 0.5 && !this.transitioning && !this.inCombat) {
+    if (this.arrivalBrake && v < 0.3 && (this.state.train.wagons[0]?.hp ?? 0) > 0) this.train.speed = Math.max(this.train.speed, 0.8);
+    // seuls les ennemis à bord ou accrochés aux wagons empêchent d'entrer en gare ;
+    // les autres battent en retraite devant les défenses de la gare
+    const threat = travel.enemies.some((e) => e.alive && (e.onTrain || e.latchedWagon >= 0));
+    if (remaining <= 0.5 && !this.transitioning && !threat) {
       this.transitioning = true;
       this.ui.fade(true, () => {
         this.timeScale = 1;
@@ -543,8 +577,9 @@ export class Game implements CombatHost {
         this.transitioning = false;
         this.ui.fade(false);
       });
-    } else if (remaining <= 0.5 && this.inCombat) {
+    } else if (remaining <= 0.5 && threat) {
       this.train.speed = 0;
+      this.notifyOnce(`gare_bloquee:${travel.to.id}`, 'Repoussez les assaillants : le train ne peut pas entrer en gare avec des ennemis à bord ou accrochés aux wagons !', 'mauvais');
     }
   }
 
@@ -1242,9 +1277,13 @@ export class Game implements CombatHost {
   }
 
   onDynamiteThrown(x: number, z: number): void {
-    // la dynamite fait sauter les barricades proches
+    // la dynamite fait sauter les barricades proches (gares) ou les obstacles sur la voie (voyage)
     window.setTimeout(() => {
       const lv = this.level;
+      if (lv instanceof TravelLevel) {
+        this.events.explodeObstacle(x);
+        return;
+      }
       if (!(lv instanceof StationLevel)) return;
       for (const [id, d] of lv.doors) {
         if (d.spec.lock?.kind === 'barricade' && !d.open && Math.hypot(d.spec.x - x, d.spec.z - z) < 4.5) {
@@ -1454,8 +1493,16 @@ export class Game implements CombatHost {
       this.player.damage(10, { faction: 'neutre', x: this.player.x, z: this.player.z, kind: 'melee' });
       this.ui.toast('Vous sautez in extremis dans le wagon précédent !', 'mauvais');
     }
-    // ennemis accrochés aux wagons perdus
-    for (const e of this.level?.enemies ?? []) if (e.latchedWagon >= this.train.wagons.length) e.latchedWagon = -1;
+    // ennemis accrochés aux wagons perdus ; ceux qui étaient à bord partent avec l'épave
+    for (const e of this.level?.enemies ?? []) {
+      if (e.latchedWagon >= this.train.wagons.length) e.latchedWagon = -1;
+      if (e.alive && e.onTrain && e.x < this.train.rearX - 0.3) {
+        e.alive = false;
+        e.hp = 0;
+        e.deadT = 99;
+        e.model.root.visible = false;
+      }
+    }
     this.player.dismount();
     this.invalidateTrainInteractables();
     this.log(reason === 'casse' ? `Un wagon s'est détaché${lostNames.length ? `, emportant ${lostNames.join(', ')}` : ''}.` : 'Wagons dételés.', 'mauvais');
@@ -1463,8 +1510,16 @@ export class Game implements CombatHost {
     this.syncCrewActors(false);
   }
 
+  /** Vrai tant que la locomotive est hors service (0 PV). */
+  locoDown = false;
+
   onLocomotiveDestroyed(): void {
-    this.gameOver(false, 'La locomotive a été détruite. L\'Espérance ne roulera plus.');
+    if (this.locoDown) return;
+    this.locoDown = true;
+    this.state.train.throttle = 0;
+    this.ui.toast('La locomotive est hors service ! Réparez-la au panneau de maintenance (locomotive) pour repartir.', 'mauvais');
+    this.log('La locomotive est tombée en panne sous les coups.', 'mauvais');
+    this.audio.play('alarm');
   }
 
   onPlayerDeath(src: DamageSource): void {
@@ -1496,11 +1551,18 @@ export class Game implements CombatHost {
     }, 4000);
   }
 
-  onWaveSpawned(n: number): void {
-    this.state.stats.attacks++;
-    if (n > 0) this.ui.toast('Attaque ! Aux postes de combat !', 'mauvais');
+  onWaveSpawned(n: number, wave = 1, total = 1, side: 1 | -1 = 1, faction: 'bandit' | 'monstre' = 'monstre'): void {
+    if (n <= 0) return;
+    const flank = side > 0 ? 'flanc sud' : 'flanc nord';
+    const who = faction === 'bandit' ? 'Bandits' : 'Créatures';
+    if (wave <= 1) {
+      this.state.stats.attacks++;
+      this.ui.toast(`Attaque ! ${who} en approche (${flank}). Aux postes de combat !`, 'mauvais');
+      for (const a of this.crew.values()) a.bark('combat', 0.3);
+    } else {
+      this.ui.toast(`Vague ${wave}/${total} : ${n} ${faction === 'bandit' ? 'assaillants' : 'créatures'} (${flank}) !`, 'mauvais');
+    }
     this.audio.play('alarm');
-    for (const a of this.crew.values()) a.bark('combat', 0.3);
   }
 
   onWaveCleared(kills: number): void {

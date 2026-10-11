@@ -146,7 +146,7 @@ h1, h2, h3, h4 { font-family: var(--font-title); font-weight: 600; letter-spacin
 .hud-prompt { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .prompt { background: var(--bg); border: 1px solid var(--amber-soft); border-radius: 5px; padding: 6px 12px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
 .key { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 5px; border: 1px solid var(--amber); border-radius: 4px; font-family: var(--font-title); font-size: 13px; color: var(--amber); background: rgba(0, 0, 0, 0.4); }
-.hud-alert { position: absolute; top: 88px; left: 50%; transform: translateX(-50%); font-family: var(--font-title); font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd060; text-shadow: 0 2px 6px #000; text-align: center; }
+.hud-alert { position: absolute; top: 104px; left: 50%; transform: translateX(-50%); font-family: var(--font-title); font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd060; text-shadow: 0 2px 6px #000; text-align: center; }
 .hud-alert.bad { color: #ff7a66; animation: pulse 0.6s infinite alternate; }
 .fps { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
 .timescale { position: absolute; top: 12px; right: 330px; }
@@ -161,13 +161,26 @@ h1, h2, h3, h4 { font-family: var(--font-title); font-weight: 600; letter-spacin
 .fader.on { opacity: 1; }
 
 /* ------------------------------------------------------------- toasts */
-.toasts { position: absolute; top: 110px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; width: min(560px, 90vw); }
+.toasts { position: absolute; top: 150px; left: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: min(400px, 44vw); pointer-events: none; }
 .toast { background: var(--bg); border-left: 3px solid var(--blue); border-radius: 4px; padding: 7px 12px; font-size: 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); animation: toastIn 0.25s ease-out; max-width: 100%; }
 .toast.bon { border-color: var(--green); }
 .toast.mauvais { border-color: var(--red); }
 .toast.quete { border-color: var(--amber); }
-.toast.out { opacity: 0; transform: translateY(-6px); transition: all 0.4s; }
-@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.toast.out { opacity: 0; transform: translateX(-10px); transition: all 0.4s; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+
+/* repères monde : ennemis hors champ, barres de vie, PNJ */
+.markers { pointer-events: none; }
+.enemy-arrow { position: absolute; width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 16px solid #e5574a; filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)); display: none; }
+.enemy-arrow.boss { border-left-color: #ff9a2e; border-top-width: 13px; border-bottom-width: 13px; border-left-width: 22px; }
+.enemy-bar { position: absolute; width: 38px; height: 5px; transform: translate(-50%, -100%); background: rgba(0, 0, 0, 0.7); border: 1px solid rgba(0, 0, 0, 0.9); border-radius: 2px; display: none; overflow: hidden; }
+.enemy-bar .fill { height: 100%; background: linear-gradient(90deg, #c8352a, #ef6a4a); }
+.enemy-bar.boss { width: 90px; height: 7px; }
+.enemy-bar.boss .fill { background: linear-gradient(90deg, #d26a14, #ffb23a); }
+.npc-mark { position: absolute; transform: translate(-50%, -100%); font-family: var(--font-title); font-weight: 700; font-size: 22px; line-height: 1; text-shadow: 0 0 4px #000, 0 2px 3px #000; animation: markBob 1.1s ease-in-out infinite alternate; }
+.npc-mark.quete { color: #ffc23a; }
+.npc-mark.marchand { color: #9fd8ff; font-size: 18px; }
+@keyframes markBob { from { margin-top: 0; } to { margin-top: -5px; } }
 
 /* bulles et textes flottants */
 .float { position: absolute; font-family: var(--font-title); font-weight: 600; font-size: 15px; text-shadow: 0 1px 3px #000, 0 0 2px #000; pointer-events: none; white-space: nowrap; transform: translate(-50%, -50%); }

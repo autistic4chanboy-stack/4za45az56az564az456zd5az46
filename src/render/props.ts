@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { GeoBuilder } from './geo';
 import type { Rng } from '../core/rng';
 
@@ -205,9 +206,19 @@ export function pipe(g: GeoBuilder, x0: number, z0: number, x1: number, z1: numb
   g.cyl(r, r, len, (x0 + x1) / 2, y, (z0 + z1) / 2, color, { rx: Math.PI / 2, ry, seg: 8 });
 }
 
+const _pc = new THREE.Color();
+const _pd = new THREE.Color();
+
+/** Flaque : bord boueux sombre et, si toxique, cœur luminescent atténué. */
 export function puddle(g: GeoBuilder, x: number, z: number, r: number, color: number, glow: boolean): void {
-  if (glow) g.layer('glow');
-  g.cyl(r, r, 0.04, x, 0.03, z, color, { seg: 9 });
+  const dark = _pc.setHex(color).multiplyScalar(0.22).lerp(_pd.setHex(0x2a2a1c), 0.55).getHex();
+  g.cyl(r, r, 0.04, x, 0.025, z, dark, { seg: 10 });
+  if (!glow) return;
+  g.layer('glow');
+  const mid = _pc.setHex(color).multiplyScalar(0.5).getHex();
+  g.cyl(r * 0.68, r * 0.68, 0.04, x, 0.04, z, mid, { seg: 10 });
+  g.cyl(r * 0.12, r * 0.12, 0.05, x + r * 0.3, 0.05, z - r * 0.2, color, { seg: 6 });
+  g.cyl(r * 0.08, r * 0.08, 0.05, x - r * 0.35, 0.05, z + r * 0.15, color, { seg: 6 });
   g.layer('base');
 }
 

@@ -725,6 +725,25 @@ export class Story {
 
   // ------------------------------------------------------------------ dialogues scénarisés
 
+  /** Vrai si un objectif en cours demande de parler à ce PNJ (marqueur « ! »). */
+  wantsTalk(npc: NpcState): boolean {
+    if (!this.active || !npc.dialogue || npc.status === 'mort') return false;
+    const q = this.main();
+    if (!q) return false;
+    const open = (id: string) => q.objectives.some((o) => o.id === id && !o.done);
+    switch (npc.dialogue) {
+      case 'delorme': return open('maire');
+      case 'silas': return open('silas');
+      case 'ingrid': return open('ingrid') || open('plan');
+      case 'mila': return open('mila');
+      case 'elise':
+      case 'bastien': return open('equipe') && npc.status === 'resident';
+      default: break;
+    }
+    const start = this.dialogueFor(npc)?.start;
+    return !!start && start.options.some((o) => o.tone === 'quete' && (!o.cond || o.cond()));
+  }
+
   dialogueFor(npc: NpcState): DialogueTree | null {
     if (!this.active || !npc.dialogue) return null;
     const g = this.game;

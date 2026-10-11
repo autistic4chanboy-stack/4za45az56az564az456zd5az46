@@ -130,7 +130,7 @@ export function renderMap(ui: UI, game: Game, departMode: boolean): HTMLElement 
   const legend = h('div', { class: 'map-legend' },
     h('span', { style: 'color:#74cf6c' }, '● Sûre'), h('span', { style: 'color:#e3a83c' }, '● Neutre'), h('span', { style: 'color:#e45b48' }, '● Hostile'), h('span', null, '● Inconnue'),
     h('span', null, '⛰ tunnel · ⑂ aiguillage · ≋ pont'), h('span', { style: 'color:#86d8ff' }, '◯ vous êtes ici'), h('span', { style: 'color:#e3a83c' }, '★ quête'),
-    st.mode === 'infini' ? h('span', null, 'Bandes bleues : hiver') : null,
+    h('span', { style: 'color:#9cc4ea' }, '▮ bande bleutée : hiver'),
   );
   return h('div', { class: 'stack' }, wrap, legend, info);
 }

@@ -218,7 +218,8 @@ export class CrewSystem {
       const dmg = def.dps * (d.severity - 0.4) * dt * (def.lethal ? 1.6 : 0.6);
       if (isPlayer) {
         if (!def.lethal && this.st.player.hp < 20) return;
-        this.st.player.hp = Math.max(def.lethal ? 0 : 15, this.st.player.hp - dmg);
+        if (def.lethal) this.game.player.damage(dmg, { faction: 'neutre', x: this.game.player.x, z: this.game.player.z, kind: 'maladie' });
+        else this.st.player.hp = Math.max(15, this.st.player.hp - dmg);
       } else {
         const n = who as NpcState;
         n.hp -= dmg;

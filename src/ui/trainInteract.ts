@@ -56,6 +56,7 @@ export function buildTrainInteractables(game: Game): Interactable[] {
           if (cur.fire > 0) return `Éteindre l'incendie du wagon ${idx + 1}`;
           const max = wagonMaxHp(st(), cur);
           if (cur.hp >= max) return null;
+          if (idx === 0 && cur.hp < max * 0.2 && (st().train.resources.ferraille ?? 0) < 1) return `Réparation de fortune de la locomotive (${Math.round(cur.hp)}/${max})`;
           return `Réparer le wagon ${idx + 1} (${Math.round(cur.hp)}/${max}) — ferraille`;
         },
         hold: () => 0.5,
@@ -71,9 +72,11 @@ export function buildTrainInteractables(game: Game): Interactable[] {
           }
           const amount = BAL.repairRate * 0.5 * repairMult();
           const cost = Math.max(1, Math.round((amount / BAL.hpPerScrap) * scrapMult()));
-          if ((st().train.resources.ferraille ?? 0) < cost) return game.ui.toast('Plus de ferraille pour réparer.', 'mauvais');
-          st().train.resources.ferraille -= cost;
-          train.repairWagon(idx, amount);
+          // sans ferraille, la locomotive peut toujours être remise en marche (jusqu'à 20 %)
+          const emergency = idx === 0 && cur.hp < wagonMaxHp(st(), cur) * 0.2 && (st().train.resources.ferraille ?? 0) < cost;
+          if (!emergency && (st().train.resources.ferraille ?? 0) < cost) return game.ui.toast('Plus de ferraille pour réparer.', 'mauvais');
+          if (!emergency) st().train.resources.ferraille -= cost;
+          train.repairWagon(idx, emergency ? amount * 0.4 : amount);
           game.engine.fx.sparks(m.x, FLOOR + 1, m.z, 4);
           game.audio.play('repair', { x: m.x, z: m.z });
           game.player.model.attack();

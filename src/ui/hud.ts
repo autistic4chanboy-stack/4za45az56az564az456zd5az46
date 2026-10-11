@@ -8,6 +8,7 @@ import { SEASON_NAMES, WEATHER_NAMES } from '../data/biomes';
 import { formatTime } from '../core/math';
 import { coalCapacity, wagonMaxHp, storageCapacity, storageUsed } from '../state/trainState';
 import { diseaseName } from '../game/crewSystem';
+import { WorldMarkers } from './markers';
 import type { Game } from '../game/Game';
 import type { UI } from './UI';
 
@@ -29,7 +30,7 @@ export class Hud {
   private vCold: HTMLDivElement;
   private vGas: HTMLDivElement;
   private vRad: HTMLDivElement;
-  private markers: HTMLDivElement;
+  readonly markers: WorldMarkers;
   private slowT = 0;
   private visible = false;
 
@@ -47,8 +48,8 @@ export class Hud {
     this.prompt = h('div', { class: 'hud-prompt' });
     this.alert = h('div', { class: 'hud-alert' });
     this.fps = h('div', { class: 'fps' });
-    this.markers = h('div', { class: 'hud' });
-    this.el = h('div', { class: 'hud', style: 'display:none' }, this.vRad, this.vGas, this.vCold, this.vHurt, this.markers, this.status, this.top, this.res, this.weapon, this.train, this.obj, this.prompt, this.alert, this.fps);
+    this.markers = new WorldMarkers(game);
+    this.el = h('div', { class: 'hud', style: 'display:none' }, this.vRad, this.vGas, this.vCold, this.vHurt, this.markers.el, this.status, this.top, this.res, this.weapon, this.train, this.obj, this.prompt, this.alert, this.fps);
   }
 
   setVisible(v: boolean): void {
@@ -73,6 +74,7 @@ export class Hud {
     this.vGas.style.opacity = gas > 0 ? (st.player.gear.tete === 'masque' && st.player.filter > 0 ? '0.25' : '0.7') : '0';
     const rad = g.radiationAt(p.x, p.z);
     this.vRad.style.opacity = String(Math.min(0.8, rad * 0.12));
+    this.markers.update(dt);
     this.updatePrompt();
     if (this.slowT > 0) return;
     this.slowT = 0.2;
@@ -288,6 +290,10 @@ export class Hud {
     }
     if (g.state.train.heat > 75) {
       this.alert.textContent = 'SURCHAUFFE DE LA CHAUDIÈRE — RALENTISSEZ';
+      this.alert.className = 'hud-alert bad';
+    }
+    if ((g.state.train.wagons[0]?.hp ?? 1) <= 0) {
+      this.alert.textContent = 'LOCOMOTIVE HORS SERVICE — RÉPAREZ-LA (PANNEAU DE MAINTENANCE)';
       this.alert.className = 'hud-alert bad';
     }
   }

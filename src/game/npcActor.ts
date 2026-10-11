@@ -577,8 +577,14 @@ export class NpcActor implements Actor {
         } else if (st.hp < maxHp * 0.92) {
           prio = 30 * (1 - st.hp / maxHp) + 10;
         }
+        // locomotive en panne : priorité absolue, réparable même sans ferraille (réparation de fortune)
+        const locoDown = w.index === 0 && st.hp < maxHp * 0.2 && kind !== 'feu';
+        if (locoDown) {
+          prio = 90;
+          kind = 'coque';
+        }
         if (prio < 0) continue;
-        if (kind !== 'feu' && (res.ferraille ?? 0) < 1) continue;
+        if (kind !== 'feu' && !locoDown && (res.ferraille ?? 0) < 1) continue;
         const score = Math.abs(w.cx - this.x) * 0.3 - prio;
         if (score < best) {
           best = score;
@@ -637,11 +643,14 @@ export class NpcActor implements Actor {
       c.hp = Math.min(max, c.hp + amount);
       return true;
     }
-    const amount = BAL.repairRate * 0.6 * eff * dt;
+    let amount = BAL.repairRate * 0.6 * eff * dt;
     const cost = (amount / BAL.hpPerScrap) * scrapUse;
-    if ((g.state.train.resources.ferraille ?? 0) < cost) return false;
-    g.state.train.resources.ferraille -= cost;
+    const emergency = w.index === 0 && st.hp < wagonMaxHp(g.state, st) * 0.2 && (g.state.train.resources.ferraille ?? 0) < cost;
+    if (!emergency && (g.state.train.resources.ferraille ?? 0) < cost) return false;
+    if (emergency) amount *= 0.4;
+    else g.state.train.resources.ferraille -= cost;
     train.repairWagon(w.index, amount);
+    if (emergency && st.hp >= wagonMaxHp(g.state, st) * 0.2) this.workTarget = null;
     if (st.hp >= wagonMaxHp(g.state, st) * 0.99) this.workTarget = null;
     return true;
   }
